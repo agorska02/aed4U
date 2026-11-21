@@ -21,11 +21,16 @@ ROOT = HERE.parent
 # SQLite file by default; AED_DATABASE_URL=postgresql://… (or --db) switches to PostgreSQL.
 DEFAULT_DB = os.environ.get("AED_DATABASE_URL") or str(HERE / "aed_demo.sqlite3")
 EXAMPLES = ROOT / "schema" / "aed-example.csv"
-SCHEMA_VERSION = 3  # an older demo database is recreated automatically
+SCHEMA_VERSION = 7  # an older demo database is recreated automatically
 
 sys.path.insert(0, str(ROOT / "backend"))
 from aed import importing  # noqa: E402
-from aed.validation import field_names, to_json_value, validate_record  # noqa: E402
+from aed.validation import (  # noqa: E402
+    institution_field_names,
+    record_field_names,
+    to_json_value,
+    validate_record,
+)
 
 # server.py imports the shared modules through this file (it puts backend/ on sys.path first).
 __all__ = [
@@ -34,6 +39,7 @@ __all__ = [
     "connect",
     "db_values",
     "importing",
+    "institution_values",
     "init_db",
     "insert_report",
     "now_iso",
@@ -44,10 +50,14 @@ __all__ = [
 
 PBKDF2_ITERATIONS = 100_000
 NULLABLE_COLUMNS = ("floor", "last_inspection_date", "electrodes_expiry_date", "battery_expiry_date")
-AED_COLUMNS = field_names(provider_only=True)
+AED_COLUMNS = record_field_names()  # stored AED columns: provider + institution + internal fields
 
 # Test data only — passwords are shown on the demo login page.
-ORGANIZATIONS = ["Urząd Miasta Demo (instytucja A)", "Szpital Demo (instytucja B)"]
+ORGANIZATIONS = [
+    # title, REGON, public phone, public e-mail (institution profile; fictional)
+    ("Urząd Miasta Demo (instytucja A)", "123456785", "120000000", "sekretariat@urzad-demo.example"),
+    ("Szpital Demo (instytucja B)", "987654325", "580000000", "kontakt@szpital-demo.example"),
+]
 USERS = [
     # email, fullname, password, is_staff, is_superuser, organization indexes
     ("dostawca@demo.local", "Dostawca A", "Demo123!", True, False, [0]),
@@ -83,6 +93,18 @@ def now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+def institution_values(organization):
+    """x-from-institution fields of a report, taken from the institution profile (a row of `organizations`)."""
+    values = {
+        "operator_name": organization["title"],
+        "operator_regon": organization["regon"],
+        "contact_phone": organization["phone"],
+        "contact_email": organization["email"],
+    }
+    assert set(values) == set(institution_field_names()), "schema and institution profile out of sync"
+    return values
+
+
 def init_db(db, reset=False) -> None:
     db.init_schema(SCHEMA_VERSION, reset=reset)
 
@@ -95,6 +117,7 @@ def db_values(cleaned):
         if value is None and name not in NULLABLE_COLUMNS:
             value = ""
         values[name] = value
+    values["device_key"] = importing.device_key(cleaned)  # unique: one device cannot be in two places
     return values
 
 
@@ -144,7 +167,8 @@ def seed(db) -> None:
     if db.query("SELECT COUNT(*) AS n FROM users")[0]["n"]:
         return
     with db.transaction():
-        org_ids = [db.insert("organizations", {"title": title}) for title in ORGANIZATIONS]
+        organizations = [dict(zip(("title", "regon", "phone", "email"), org)) for org in ORGANIZATIONS]
+        org_ids = [db.insert("organizations", org) for org in organizations]
         user_ids = {}
         for email, fullname, password, is_staff, is_superuser, orgs in USERS:
             user_ids[email] = db.insert(
@@ -163,10 +187,12 @@ def seed(db) -> None:
                 )
         admin_id = user_ids["admin@demo.local"]
         providers = {0: user_ids["dostawca@demo.local"], 1: user_ids["dostawca2@demo.local"]}
-        for record, (org_index, status, comment) in zip(example_records(), REPORTS):
-            cleaned, errors = validate_record(record)
+        for index, (record, (org_index, status, comment)) in enumerate(zip(example_records(), REPORTS), 1):
+            # serial numbers are internal (not in the published example file) — demo values
+            cleaned, errors = validate_record(dict(record, serial_number="DEMO-{0:04d}".format(index)))
             if errors:
                 raise ValueError(f"Invalid example record {record['id']}: {errors}")
+            cleaned.update(institution_values(organizations[org_index]))
             verified = status in ("verified", "rejected")
             insert_report(
                 db,

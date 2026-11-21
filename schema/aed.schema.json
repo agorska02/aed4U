@@ -1,5 +1,5 @@
 {
-  "$comment": "Reference data scope for AED defibrillators on dane.gov.pl (campaign \"Puls na mapie\"). Frictionless Table Schema v1. Custom keys: x-system = filled by the system, not by the data provider (omit in imports); x-group = form section (see x-groups); x-enumLabels = Polish labels of enum codes (same as dictionaries/*.csv); x-osm = matching OpenStreetMap tag (emergency=defibrillator).",
+  "$comment": "Reference data scope for AED defibrillators on dane.gov.pl (campaign \"Puls na mapie\"). Frictionless Table Schema v1. Custom keys: x-system = filled by the system, not by the data provider (omit in imports); x-from-institution = always taken from the profile of the reporting institution in the portal (provider values are ignored); x-internal = collected for the portal administrator only, never published in the dataset; x-requiredIf = {field: value} – required when the other field has that value, and allowed only then; x-group = form section (see x-groups); x-enumLabels = Polish labels of enum codes (same as dictionaries/*.csv); x-osm = matching OpenStreetMap tag (emergency=defibrillator).",
   "name": "aed-defibrillators",
   "title": "Defibrylatory AED – wzorcowy zakres danych",
   "description": "Jednolity zakres danych o automatycznych defibrylatorach zewnętrznych (AED) udostępnianych w portalu dane.gov.pl. Jeden wiersz = jedno urządzenie. Kodowanie UTF-8, separator pól: przecinek, separator dziesiętny: kropka, daty w ISO 8601, współrzędne w WGS84 (EPSG:4326).",
@@ -13,7 +13,7 @@
     {
       "name": "operator",
       "title": "Dysponent urządzenia",
-      "description": "Kto odpowiada za urządzenie."
+      "description": "Dysponent to Twoja instytucja – nazwa i REGON pochodzą z jej profilu w portalu."
     },
     {
       "name": "place",
@@ -23,12 +23,12 @@
     {
       "name": "address",
       "title": "Adres",
-      "description": "Adres obiektu w osobnych polach, zgodnie z TERYT."
+      "description": "Adres obiektu w osobnych polach."
     },
     {
       "name": "position",
       "title": "Położenie",
-      "description": "Współrzędne geograficzne w układzie WGS84, np. odczytane z mapy."
+      "description": "Współrzędne geograficzne w układzie WGS84. Można wybrać z mapy, klikając w przycisk „Wskaż na mapie”."
     },
     {
       "name": "access",
@@ -42,8 +42,8 @@
     },
     {
       "name": "contact",
-      "title": "Kontakt instytucjonalny",
-      "description": "Tylko dane kontaktowe instytucji – bez danych osobowych."
+      "title": "Kontakt w sprawie urządzenia",
+      "description": "W zbiorze publikowany jest kontakt instytucji z jej profilu w portalu. Telefon do osoby odpowiedzialnej widzi tylko administrator portalu."
     },
     {
       "name": "meta",
@@ -64,20 +64,9 @@
       "x-system": true
     },
     {
-      "name": "source_id",
-      "title": "Identyfikator u dysponenta",
-      "description": "Identyfikator urządzenia w systemie dysponenta (np. numer inwentarzowy). Pozwala dopasować rekord przy kolejnym imporcie.",
-      "type": "string",
-      "constraints": {
-        "maxLength": 100
-      },
-      "x-osm": "ref",
-      "x-group": "operator"
-    },
-    {
       "name": "operator_name",
       "title": "Dysponent",
-      "description": "Nazwa instytucji lub podmiotu, który odpowiada za urządzenie (właściciel lub zarządca).",
+      "description": "Nazwa instytucji odpowiedzialnej za urządzenie – zawsze z profilu instytucji zgłaszającej w portalu (dostawca jej nie wpisuje).",
       "type": "string",
       "constraints": {
         "required": true,
@@ -85,17 +74,19 @@
         "maxLength": 300
       },
       "x-osm": "operator",
-      "x-group": "operator"
+      "x-group": "operator",
+      "x-from-institution": true
     },
     {
       "name": "operator_regon",
       "title": "REGON dysponenta",
-      "description": "Numer REGON dysponenta: 9 lub 14 cyfr, bez spacji i myślników.",
+      "description": "Numer REGON dysponenta (9 lub 14 cyfr) – zawsze z profilu instytucji w portalu.",
       "type": "string",
       "constraints": {
         "pattern": "^([0-9]{9}|[0-9]{14})$"
       },
-      "x-group": "operator"
+      "x-group": "operator",
+      "x-from-institution": true
     },
     {
       "name": "source",
@@ -170,7 +161,7 @@
     {
       "name": "voivodeship",
       "title": "Województwo",
-      "description": "Nazwa województwa małymi literami, zgodnie ze słownikiem dictionaries/voivodeships.csv (TERYT TERC).",
+      "description": "Nazwa województwa małymi literami, zgodnie ze słownikiem dictionaries/voivodeships.csv.",
       "type": "string",
       "constraints": {
         "enum": [
@@ -197,7 +188,7 @@
     {
       "name": "county",
       "title": "Powiat",
-      "description": "Nazwa powiatu według TERYT, np. „krakowski”, „m. Kraków”.",
+      "description": "Nazwa powiatu, np. „krakowski”, „m. Kraków”.",
       "type": "string",
       "constraints": {
         "maxLength": 100
@@ -207,7 +198,7 @@
     {
       "name": "commune",
       "title": "Gmina",
-      "description": "Nazwa gminy według TERYT.",
+      "description": "Nazwa gminy.",
       "type": "string",
       "constraints": {
         "required": true,
@@ -217,19 +208,9 @@
       "x-group": "address"
     },
     {
-      "name": "teryt_terc",
-      "title": "Kod TERYT gminy (TERC)",
-      "description": "Siedmiocyfrowy identyfikator gminy z rejestru TERC (województwo, powiat, gmina, rodzaj gminy), np. 1261011.",
-      "type": "string",
-      "constraints": {
-        "pattern": "^[0-9]{7}$"
-      },
-      "x-group": "address"
-    },
-    {
       "name": "city",
       "title": "Miejscowość",
-      "description": "Nazwa miejscowości według TERYT SIMC.",
+      "description": "Nazwa miejscowości.",
       "type": "string",
       "constraints": {
         "required": true,
@@ -240,19 +221,9 @@
       "x-group": "address"
     },
     {
-      "name": "teryt_simc",
-      "title": "Kod TERYT miejscowości (SIMC)",
-      "description": "Siedmiocyfrowy identyfikator miejscowości z rejestru SIMC, np. 0950463.",
-      "type": "string",
-      "constraints": {
-        "pattern": "^[0-9]{7}$"
-      },
-      "x-group": "address"
-    },
-    {
       "name": "street_type",
       "title": "Rodzaj ulicy",
-      "description": "Cecha ulicy według TERYT ULIC, zgodnie ze słownikiem dictionaries/street_types.csv. Puste, gdy miejscowość nie ma ulic.",
+      "description": "Rodzaj ulicy (ul., al., pl. …), zgodnie ze słownikiem dictionaries/street_types.csv. Puste, gdy miejscowość nie ma ulic.",
       "type": "string",
       "constraints": {
         "enum": [
@@ -369,7 +340,7 @@
     {
       "name": "opening_hours",
       "title": "Godziny dostępności",
-      "description": "Kiedy urządzenie jest dostępne, w składni opening_hours z OpenStreetMap, np. „24/7”, „Mo-Fr 08:00-16:00”, „Mo-Fr 07:30-15:30; Sa 09:00-13:00”.",
+      "description": "Napisz kiedy urządzenie jest dostępne.",
       "type": "string",
       "constraints": {
         "required": true,
@@ -431,11 +402,44 @@
     {
       "name": "manufacturer",
       "title": "Producent",
+      "description": "Producent urządzenia ze słownika dictionaries/manufacturers.csv; „other” – producent spoza listy (podaj nazwę w polu manufacturer_other).",
       "type": "string",
       "constraints": {
-        "maxLength": 100
+        "required": true,
+        "enum": [
+          "zoll",
+          "philips",
+          "cardiac_science",
+          "defibtech",
+          "heartsine",
+          "lifepoint",
+          "other"
+        ]
       },
       "x-osm": "manufacturer",
+      "x-enumLabels": {
+        "zoll": "ZOLL",
+        "philips": "Philips",
+        "cardiac_science": "Cardiac Science",
+        "defibtech": "Defibtech",
+        "heartsine": "HeartSine",
+        "lifepoint": "LifePoint",
+        "other": "Inny producent"
+      },
+      "x-group": "device"
+    },
+    {
+      "name": "manufacturer_other",
+      "title": "Nazwa producenta",
+      "description": "Wypełnij tylko, gdy wybrano „Inny producent”.",
+      "type": "string",
+      "constraints": {
+        "minLength": 2,
+        "maxLength": 100
+      },
+      "x-requiredIf": {
+        "manufacturer": "other"
+      },
       "x-group": "device"
     },
     {
@@ -446,6 +450,18 @@
         "maxLength": 100
       },
       "x-osm": "model",
+      "x-group": "device"
+    },
+    {
+      "name": "serial_number",
+      "title": "Numer seryjny",
+      "description": "Numer seryjny z tabliczki znamionowej urządzenia.",
+      "type": "string",
+      "constraints": {
+        "required": true,
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9 ./-]{0,49}$"
+      },
+      "x-internal": true,
       "x-group": "device"
     },
     {
@@ -471,25 +487,38 @@
     },
     {
       "name": "contact_phone",
-      "title": "Telefon kontaktowy",
-      "description": "Instytucjonalny numer telefonu: 9 cyfr, bez spacji i prefiksu +48. Nie podawaj prywatnych numerów.",
+      "title": "Telefon instytucji",
+      "description": "Publiczny numer telefonu instytucji (9 cyfr) – z profilu instytucji w portalu.",
       "type": "string",
       "constraints": {
         "pattern": "^[0-9]{9}$"
       },
       "x-osm": "phone",
-      "x-group": "contact"
+      "x-group": "contact",
+      "x-from-institution": true
     },
     {
       "name": "contact_email",
-      "title": "E-mail kontaktowy",
-      "description": "Instytucjonalny adres e-mail (np. sekretariat@…). Nie podawaj prywatnych adresów.",
+      "title": "E-mail instytucji",
+      "description": "Publiczny adres e-mail instytucji – z profilu instytucji w portalu.",
       "type": "string",
       "format": "email",
       "constraints": {
         "maxLength": 254
       },
       "x-osm": "email",
+      "x-group": "contact",
+      "x-from-institution": true
+    },
+    {
+      "name": "internal_contact_phone",
+      "title": "Telefon do osoby odpowiedzialnej za AED",
+      "description": "Służbowy numer (9 cyfr) osoby, która opiekuje się tym urządzeniem – dla administratora portalu i do weryfikacji. Nie jest publikowany w zbiorze danych.",
+      "type": "string",
+      "constraints": {
+        "pattern": "^[0-9]{9}$"
+      },
+      "x-internal": true,
       "x-group": "contact"
     },
     {

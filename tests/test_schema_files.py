@@ -10,7 +10,12 @@ from helpers import FRONTEND_DIR, SCHEMA_DIR
 helpers.setup_paths()
 
 import build_frontend_schema  # noqa: E402
-from aed.validation import field_names, load_schema  # noqa: E402
+from aed.validation import (  # noqa: E402
+    field_names,
+    institution_field_names,
+    load_schema,
+    published_field_names,
+)
 
 ENUM_DICTIONARIES = {
     "access": "access.csv",
@@ -51,12 +56,19 @@ class SchemaFilesTest(unittest.TestCase):
                 field = self.by_name[name]
                 self.assertEqual([r[0] for r in rows], field["constraints"]["enum"])
                 self.assertEqual({r[0]: r[1] for r in rows}, field["x-enumLabels"])
-        voivodeships = [r[1] for r in read_csv(SCHEMA_DIR / "dictionaries" / "voivodeships.csv")[1:]]
+        voivodeships = [r[0] for r in read_csv(SCHEMA_DIR / "dictionaries" / "voivodeships.csv")[1:]]
         self.assertEqual(voivodeships, self.by_name["voivodeship"]["constraints"]["enum"])
 
     def test_template_and_example_headers_follow_schema(self):
         self.assertEqual(read_csv(SCHEMA_DIR / "aed-template.csv")[0], field_names(provider_only=True))
-        self.assertEqual(read_csv(SCHEMA_DIR / "aed-example.csv")[0], field_names())
+        self.assertEqual(read_csv(SCHEMA_DIR / "aed-example.csv")[0], published_field_names())
+
+    def test_institution_and_internal_fields(self):
+        self.assertEqual(institution_field_names(), ["operator_name", "operator_regon", "contact_phone", "contact_email"])
+        self.assertNotIn("internal_contact_phone", published_field_names())
+        self.assertIn("internal_contact_phone", field_names(provider_only=True))
+        for name in institution_field_names():
+            self.assertNotIn(name, field_names(provider_only=True))
 
     def test_generated_frontend_schema_is_up_to_date(self):
         current = (FRONTEND_DIR / "aed-schema.js").read_text(encoding="utf-8")

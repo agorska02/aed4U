@@ -20,16 +20,17 @@ from aed.importing import (  # noqa: E402
     to_csv,
     to_geojson,
 )
-from aed.validation import field_names, validate_record  # noqa: E402
+from aed.validation import published_field_names, validate_record  # noqa: E402
 
-DEFAULT_OPERATOR = "Instytucja testowa"
+# Values of the x-from-institution fields, as a backend takes them from the institution profile.
+INSTITUTION = {"operator_name": "Instytucja testowa"}
 
 
 def stored_examples():
     """Example records as a backend stores them (cleaned values + uuid/source/verified_at)."""
     records = []
     for row in example_rows():
-        cleaned, _errors = validate_record(row)
+        cleaned, _errors = validate_record(row, provider=False)  # a complete record incl. institution fields
         records.append(dict(cleaned, uuid=row["id"], source=row["source"], verified_at=row["verified_at"]))
     return records
 
@@ -40,7 +41,7 @@ def run_case(case):
         rows = parse_file(case["content"], case["format"])
     except ImportFileError:
         return {"file_error": True}
-    plan = plan_import(rows, case.get("own", []), case.get("all", case.get("own", [])), DEFAULT_OPERATOR)
+    plan = plan_import(rows, case.get("own", []), case.get("all", case.get("own", [])), INSTITUTION)
     return {
         "file_error": False,
         "errors": [[e["row"], e["field"]] for e in plan["errors"]],
@@ -83,13 +84,13 @@ class ExportTest(unittest.TestCase):
 
     def test_csv_export_round_trips_to_the_example_file(self):
         rows = list(csv.DictReader(io.StringIO(self.exported_csv())))
-        self.assertEqual(list(rows[0]), field_names())
+        self.assertEqual(list(rows[0]), published_field_names())
         self.assertEqual(rows, example_rows())
 
-    def test_exported_csv_can_be_imported_again(self):
-        plan = plan_import(parse_file(self.exported_csv(), "csv"), [], [], DEFAULT_OPERATOR)
-        self.assertEqual(plan["errors"], [])
-        self.assertEqual(plan["summary"]["create"], 5)
+    def test_exported_csv_lacks_only_serial_numbers_for_a_reimport(self):
+        # The published file has no serial numbers (administrator only), so a provider must add them to re-import it.
+        with self.assertRaisesRegex(ImportFileError, "serial_number"):
+            parse_file(self.exported_csv(), "csv")
 
     def test_geojson_export(self):
         collection = to_geojson([export_record(r) for r in stored_examples()], data_date="2026-11-21")
@@ -98,8 +99,8 @@ class ExportTest(unittest.TestCase):
         self.assertIs(feature["properties"]["indoor"], True)
         self.assertIsNone(feature["properties"]["access_notes"])
         self.assertEqual(collection["metadata"]["data_date"], "2026-11-21")
-        plan = plan_import(parse_file(json.dumps(collection), "geojson"), [], [], DEFAULT_OPERATOR)
-        self.assertEqual(plan["errors"], [])
+        with self.assertRaisesRegex(ImportFileError, "serial_number"):
+            parse_file(json.dumps(collection), "geojson")
 
 
 if __name__ == "__main__":

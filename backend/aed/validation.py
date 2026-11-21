@@ -51,15 +51,15 @@ MESSAGES = {
     "decimals": "Podaj najwyżej {0} miejsc po przecinku.",
     "opening_hours": "Użyj składni OpenStreetMap, np. 24/7 albo Mo-Fr 08:00-16:00; Sa 09:00-13:00.",
     "unknown": "Nieznane pole – sprawdź nazwę kolumny w schemacie.",
+    "only_if": "Wypełnij tylko, gdy wybrano „{0}”.",
 }
 
 # Field-specific messages for pattern constraints (more helpful than "invalid format").
 PATTERN_MESSAGES = {
     "operator_regon": "REGON to 9 lub 14 cyfr, bez spacji.",
-    "teryt_terc": "Kod TERC to 7 cyfr, np. 1261011.",
-    "teryt_simc": "Kod SIMC to 7 cyfr, np. 0950463.",
     "postal_code": "Kod pocztowy w formacie NN-NNN, np. 31-004.",
     "contact_phone": "Numer telefonu to 9 cyfr, bez spacji i prefiksu +48.",
+    "internal_contact_phone": "Numer telefonu to 9 cyfr, bez spacji i prefiksu +48.",
 }
 
 
@@ -79,13 +79,32 @@ def load_schema(path=None):
         return json.load(fh)
 
 
+def is_provider_field(field):
+    """Entered by the data provider: not set by the system (x-system) nor taken from the institution profile."""
+    return not field.get("x-system") and not field.get("x-from-institution")
+
+
 def fields(schema=None, provider_only=False):
     schema = schema or load_schema()
-    return [f for f in schema["fields"] if not (provider_only and f.get("x-system"))]
+    return [f for f in schema["fields"] if not provider_only or is_provider_field(f)]
 
 
 def field_names(schema=None, provider_only=False):
     return [f["name"] for f in fields(schema, provider_only)]
+
+
+def record_field_names(schema=None):
+    """Fields stored with a report: everything except system fields (provider + institution + internal)."""
+    return [f["name"] for f in fields(schema) if not f.get("x-system")]
+
+
+def institution_field_names(schema=None):
+    return [f["name"] for f in fields(schema) if f.get("x-from-institution")]
+
+
+def published_field_names(schema=None):
+    """Columns of the published dataset (x-internal fields are for the portal administrator only)."""
+    return [f["name"] for f in fields(schema) if not f.get("x-internal")]
 
 
 def enum_choices(name, schema=None):
@@ -204,14 +223,15 @@ def clean_value(field, value):
 def validate_record(record, schema=None, provider=True, optional=()):
     """Validate one AED record (dict of raw values).
 
-    provider=True: the record comes from a data provider (form or import) — fields marked x-system are
-    ignored, so a previously exported file can be imported again.
-    optional: names of required fields that the caller fills in itself (e.g. operator_name from the institution).
+    provider=True: the record comes from a data provider (form or import) — fields marked x-system or
+    x-from-institution are ignored (the server sets them), so a previously exported file can be imported again.
+    provider=False: a row of the published dataset — every field except x-internal ones is checked.
+    optional: names of required fields that the caller fills in itself.
 
     Returns (cleaned, errors): `cleaned` has every checked field (None if missing); `errors` maps a field
     name to a message (empty if the record is valid).
     """
-    schema_fields = fields(schema, provider_only=provider)
+    schema_fields = [f for f in fields(schema, provider_only=provider) if provider or not f.get("x-internal")]
     known = {f["name"] for f in fields(schema)}
     cleaned, errors = {}, {}
     for name in record:
@@ -229,7 +249,26 @@ def validate_record(record, schema=None, provider=True, optional=()):
             cleaned[name] = clean_value(field, raw)
         except FieldError as exc:
             errors[name] = str(exc)
+    _check_required_if(schema_fields, cleaned, errors, optional)
     return cleaned, errors
+
+
+def _check_required_if(schema_fields, cleaned, errors, optional):
+    """x-requiredIf {other: value}: required when `other` has that value, and allowed only then."""
+    by_name = {f["name"]: f for f in schema_fields}
+    for field in schema_fields:
+        condition = field.get("x-requiredIf")
+        if not condition or field["name"] in errors:
+            continue
+        other, expected = next(iter(condition.items()))
+        if other not in by_name:
+            continue
+        applies = cleaned.get(other) == expected
+        if applies and cleaned.get(field["name"]) is None and field["name"] not in optional:
+            errors[field["name"]] = MESSAGES["required"]
+        elif not applies and cleaned.get(field["name"]) is not None:
+            label = by_name[other].get("x-enumLabels", {}).get(expected, expected)
+            errors[field["name"]] = MESSAGES["only_if"].format(label)
 
 
 def to_json_value(value):

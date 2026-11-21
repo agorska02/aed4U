@@ -45,7 +45,7 @@ var imports = DATA.imports.map(function (c) {
   try { rows = AedImport.parseFile(c.content, c.format); }
   catch (e) { if (e instanceof AedImport.ImportFileError) return {file_error: true}; throw e; }
   var own = c.own || [], all = c.all || own;
-  var plan = AedImport.planImport(rows, own, all, "Instytucja testowa");
+  var plan = AedImport.planImport(rows, own, all, {operator_name: "Instytucja testowa"});
   return {
     file_error: false,
     errors: plan.errors.map(function (e) { return [e.row, e.field]; }),
@@ -54,7 +54,7 @@ var imports = DATA.imports.map(function (c) {
   };
 });
 var exported = AedImport.toCsv(AED_EXAMPLES.map(function (row) {
-  var r = AedValidator.validate(row).cleaned;
+  var r = AedValidator.validate(row, {provider: false}).cleaned;
   r.uuid = row.id; r.source = row.source; r.verified_at = row.verified_at;
   return AedImport.exportRecord(r);
 }));

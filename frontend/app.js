@@ -143,7 +143,7 @@
         if (field["x-group"] !== group.name) return;
         var text = formatValue(field.name, attrs[field.name]);
         if (!text) return;
-        list.appendChild(el("dt", { text: field.title }));
+        list.appendChild(el("dt", { text: field.title + (field["x-internal"] ? " (widoczne tylko dla administratora)" : "") }));
         list.appendChild(el("dd", { text: text }));
       });
       if (!list.children.length) return;
@@ -369,30 +369,48 @@
   var LABELS = { organization: "Instytucja" };
   FORM_FIELDS.forEach(function (f) { LABELS[f.name] = f.title; });
 
-  // Filled in by the server from the institution when left empty.
-  var OPTIONAL_IN_FORM = ["operator_name"];
+  // x-from-institution fields are not in the form: the server always takes them from the institution profile
+  // (GET /auth/user shows them read-only). Profile keys of GET /auth/user for those fields:
+  var INSTITUTION_KEYS = { operator_name: "title", operator_regon: "regon", contact_phone: "phone", contact_email: "email" };
+  var INSTITUTION_FIELDS = window.AED_SCHEMA.fields.filter(function (f) { return f["x-from-institution"]; });
   var DEFAULTS = {
     device_status: function () { return "operational"; },
     data_date: function () { return new Date().toISOString().slice(0, 10); }
   };
   // WCAG 1.3.5 (identify input purpose) for fields with an autocomplete token.
   var AUTOCOMPLETE = {
-    operator_name: "organization",
     postal_code: "postal-code",
-    city: "address-level2",
-    contact_email: "email",
-    contact_phone: "tel-national"
+    city: "address-level2"
   };
-  var SHORT_FIELDS = ["floor", "teryt_terc", "teryt_simc", "street_type", "street_number", "postal_code",
-    "latitude", "longitude", "operator_regon", "contact_phone", "source_id"];
+  var SHORT_FIELDS = ["floor", "street_type", "street_number", "postal_code",
+    "latitude", "longitude", "internal_contact_phone"];
   var PLACEHOLDERS = { latitude: "np. 50.061389", longitude: "np. 19.938333", postal_code: "np. 31-004" };
 
   var adminLink = $("admin-link");
   if (config.adminPanelUrl) adminLink.href = config.adminPanelUrl;
   $("demo-resubmit-note").hidden = !config.demo;
 
+  // x-requiredIf fields are shown (and then required) only when the other field has the given value.
   function isRequired(field) {
-    return !!(field.constraints || {}).required && OPTIONAL_IN_FORM.indexOf(field.name) === -1;
+    return !!(field.constraints || {}).required || !!field["x-requiredIf"];
+  }
+
+  function setupConditionalFields() {
+    FORM_FIELDS.forEach(function (field) {
+      var condition = field["x-requiredIf"];
+      if (!condition) return;
+      var other = Object.keys(condition)[0];
+      var control = reportForm.elements[other];
+      var wrapper = $(field.name).closest(".field");
+      var update = function () {
+        var show = control.value === condition[other];
+        wrapper.hidden = !show;
+        if (!show) $(field.name).value = "";
+      };
+      control.addEventListener("change", update);
+      reportForm.addEventListener("reset", function () { setTimeout(update, 0); });
+      update();
+    });
   }
 
   function labelContent(node, field) {
@@ -404,9 +422,7 @@
   }
 
   function hintText(field) {
-    var text = field.description || "";
-    if (field.name === "operator_name") text += " Puste pole oznacza nazwę Twojej instytucji.";
-    return text;
+    return field.description || "";
   }
 
   function buildInput(field) {
@@ -424,9 +440,9 @@
       var type = "text";
       if (field.type === "date") type = "date";
       else if (field.format === "email") type = "email";
-      else if (field.name === "contact_phone") type = "tel";
+      else if (/phone$/.test(field.name)) type = "tel";
       input = el("input", { type: type });
-      if (field.type === "integer" || field.name === "contact_phone") input.setAttribute("inputmode", "numeric");
+      if (field.type === "integer" || /phone$/.test(field.name)) input.setAttribute("inputmode", "numeric");
       if (field.type === "number") input.setAttribute("inputmode", "decimal");
       if (PLACEHOLDERS[field.name]) input.setAttribute("placeholder", PLACEHOLDERS[field.name]);
     }
@@ -483,6 +499,13 @@
       var section = el("fieldset", { className: "form-section" });
       section.appendChild(el("legend", { text: group.title }));
       if (group.description) section.appendChild(el("p", { className: "hint", text: group.description }));
+      var fromInstitution = INSTITUTION_FIELDS.filter(function (f) { return f["x-group"] === group.name; });
+      if (fromInstitution.length) {
+        var box = el("dl", { className: "institution-info", "data-group": group.name });
+        box.appendChild(el("dt", { text: "Z profilu instytucji" }));
+        box.appendChild(el("dd", { text: "Wczytywanie…" }));
+        section.appendChild(box);
+      }
       FORM_FIELDS.forEach(function (field) {
         if (field["x-group"] === group.name) section.appendChild(buildField(field));
       });
@@ -556,6 +579,34 @@
     });
   }
 
+  // Read-only institution profile in the form sections (operator, public contact).
+  function showInstitution(institution, count) {
+    Array.prototype.forEach.call(document.querySelectorAll(".institution-info"), function (box) {
+      box.textContent = "";
+      var group = box.getAttribute("data-group");
+      if (!institution) {
+        box.appendChild(el("dt", { text: "Z profilu instytucji" }));
+        box.appendChild(el("dd", { text: "Dane zostaną uzupełnione z profilu Twojej instytucji w portalu." }));
+        return;
+      }
+      INSTITUTION_FIELDS.forEach(function (field) {
+        if (field["x-group"] !== group) return;
+        box.appendChild(el("dt", { text: field.title }));
+        box.appendChild(el("dd", { text: institution[INSTITUTION_KEYS[field.name]] || "brak w profilu instytucji" }));
+      });
+      if (group === "operator" && count > 1) {
+        box.appendChild(el("dd", { className: "hint", text: "Należysz do kilku instytucji – zgłoszenie dotyczy pierwszej z nich." }));
+      }
+    });
+  }
+
+  function loadInstitution() {
+    api("GET", "/auth/user").then(function (res) {
+      var institutions = res.ok && res.body && res.body.data && res.body.data.attributes.institutions;
+      showInstitution(institutions && institutions.length ? institutions[0] : null, institutions ? institutions.length : 0);
+    }).catch(function () { showInstitution(null, 0); });
+  }
+
   function loadReports() {
     api("GET", "/aed-reports").then(function (res) {
       if (handleAuthError(res, auth)) return;
@@ -571,14 +622,15 @@
 
   buildForm();
   applyDefaults();
-  var auth = initAuth({ onLogin: loadReports });
+  setupConditionalFields();
+  var auth = initAuth({ onLogin: function () { loadInstitution(); loadReports(); } });
   window.AedClient.reloadReports = loadReports;
   window.AedClient.auth = auth;
 
   reportForm.addEventListener("submit", function (event) {
     event.preventDefault();
     hideStatus();
-    var result = window.AedValidator.validate(collectValues(), { optional: OPTIONAL_IN_FORM });
+    var result = window.AedValidator.validate(collectValues());
     showFieldErrors(result.errors);
     if (Object.keys(result.errors).length) return;
 

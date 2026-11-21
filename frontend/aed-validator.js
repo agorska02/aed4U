@@ -33,15 +33,15 @@
     uuid: "Podaj identyfikator UUID.",
     decimals: "Podaj najwyżej {0} miejsc po przecinku.",
     opening_hours: "Użyj składni OpenStreetMap, np. 24/7 albo Mo-Fr 08:00-16:00; Sa 09:00-13:00.",
-    unknown: "Nieznane pole – sprawdź nazwę kolumny w schemacie."
+    unknown: "Nieznane pole – sprawdź nazwę kolumny w schemacie.",
+    only_if: "Wypełnij tylko, gdy wybrano „{0}”."
   };
 
   var PATTERN_MESSAGES = {
     operator_regon: "REGON to 9 lub 14 cyfr, bez spacji.",
-    teryt_terc: "Kod TERC to 7 cyfr, np. 1261011.",
-    teryt_simc: "Kod SIMC to 7 cyfr, np. 0950463.",
     postal_code: "Kod pocztowy w formacie NN-NNN, np. 31-004.",
-    contact_phone: "Numer telefonu to 9 cyfr, bez spacji i prefiksu +48."
+    contact_phone: "Numer telefonu to 9 cyfr, bez spacji i prefiksu +48.",
+    internal_contact_phone: "Numer telefonu to 9 cyfr, bez spacji i prefiksu +48."
   };
 
   function FieldError(key, arg) {
@@ -51,9 +51,19 @@
 
   function schema() { return window.AED_SCHEMA; }
 
+  // Entered by the data provider: not set by the system (x-system) nor taken from the institution profile.
+  function isProviderField(f) { return !f["x-system"] && !f["x-from-institution"]; }
+
   function fields(providerOnly) {
-    return schema().fields.filter(function (f) { return !(providerOnly && f["x-system"]); });
+    return schema().fields.filter(function (f) { return !providerOnly || isProviderField(f); });
   }
+
+  function names(list) { return list.map(function (f) { return f.name; }); }
+
+  // Stored with a report: everything except system fields. Published: everything except x-internal.
+  function recordFieldNames() { return names(schema().fields.filter(function (f) { return !f["x-system"]; })); }
+  function institutionFieldNames() { return names(schema().fields.filter(function (f) { return f["x-from-institution"]; })); }
+  function publishedFieldNames() { return names(schema().fields.filter(function (f) { return !f["x-internal"]; })); }
 
   function isMissing(value) {
     return value === null || value === undefined || (typeof value === "string" && value.trim() === "");
@@ -127,7 +137,8 @@
     return value;
   }
 
-  // options: { provider: true (default) — ignore x-system fields; optional: [names] — treat as not required }
+  // options: { provider: true (default) — ignore x-system / x-from-institution fields; false — a row of the
+  //   published dataset (x-internal fields skipped); optional: [names] — treat as not required }
   // Returns { cleaned: {name: value|null}, errors: {name: message} }.
   function validate(record, options) {
     options = options || {};
@@ -139,7 +150,8 @@
     Object.keys(record).forEach(function (name) {
       if (known.indexOf(name) === -1) errors[name] = MESSAGES.unknown;
     });
-    fields(provider).forEach(function (field) {
+    var checked = fields(provider).filter(function (f) { return provider || !f["x-internal"]; });
+    checked.forEach(function (field) {
       var name = field.name;
       var raw = record[name];
       if (isMissing(raw)) {
@@ -154,7 +166,28 @@
         errors[name] = e.message;
       }
     });
+    checkRequiredIf(checked, cleaned, errors, optional);
     return { cleaned: cleaned, errors: errors };
+  }
+
+  // x-requiredIf {other: value}: required when `other` has that value, and allowed only then.
+  function checkRequiredIf(checked, cleaned, errors, optional) {
+    var byName = {};
+    checked.forEach(function (f) { byName[f.name] = f; });
+    checked.forEach(function (field) {
+      var condition = field["x-requiredIf"];
+      if (!condition || errors[field.name]) return;
+      var other = Object.keys(condition)[0];
+      var expected = condition[other];
+      if (!byName[other]) return;
+      var applies = cleaned[other] === expected;
+      if (applies && cleaned[field.name] === null && optional.indexOf(field.name) === -1) {
+        errors[field.name] = MESSAGES.required;
+      } else if (!applies && cleaned[field.name] !== null && cleaned[field.name] !== undefined) {
+        var labels = byName[other]["x-enumLabels"] || {};
+        errors[field.name] = MESSAGES.only_if.replace("{0}", labels[expected] || expected);
+      }
+    });
   }
 
   function enumLabel(name, code) {
@@ -166,6 +199,9 @@
   window.AedValidator = {
     validate: validate,
     fields: fields,
+    recordFieldNames: recordFieldNames,
+    institutionFieldNames: institutionFieldNames,
+    publishedFieldNames: publishedFieldNames,
     enumLabel: enumLabel,
     MESSAGES: MESSAGES
   };

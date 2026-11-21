@@ -23,7 +23,9 @@
     json_shape: "Oczekiwano listy obiektów, obiektu {\"data\": [...]} albo GeoJSON FeatureCollection.",
     json_record: "Rekord musi być obiektem JSON.",
     geojson_point: "Geometria musi być punktem (Point) ze współrzędnymi [długość, szerokość].",
-    duplicate_source_id: "Identyfikator „{0}” występuje w pliku więcej niż raz (pierwszy raz: rekord {1})."
+    same_device: "Ten sam producent i numer seryjny co w rekordzie {0} – jedno urządzenie może wystąpić tylko raz.",
+    device_elsewhere: "To urządzenie (producent i numer seryjny) jest już zgłoszone przez inną instytucję – " +
+      "skontaktuj się z administratorem portalu."
   };
 
   function msg(key) {
@@ -152,7 +154,7 @@
     var unknown = Object.keys(columns).filter(function (c) { return known.indexOf(c) === -1; }).sort();
     if (unknown.length) throw new ImportFileError(msg("unknown_columns", unknown.join(", ")));
     var missing = V().fields(true).filter(function (f) {
-      return (f.constraints || {}).required && f.name !== "operator_name" && !columns[f.name];
+      return (f.constraints || {}).required && !columns[f.name];
     }).map(function (f) { return f.name; });
     if (missing.length) throw new ImportFileError(msg("missing_columns", missing.join(", ")));
   }
@@ -212,6 +214,19 @@
     }) && !!a.street_number;
   }
 
+  // Serial number for comparisons: upper case, letters and digits only ("ab-123 4" == "AB1234").
+  function normalizeSerial(serial) { return String(serial || "").toUpperCase().replace(/[^A-Z0-9]/g, ""); }
+
+  // Identity of a physical device: manufacturer + normalised serial number (see importing.device_key).
+  function deviceKey(record) {
+    var manufacturer = record.manufacturer;
+    var serial = normalizeSerial(record.serial_number);
+    if (!manufacturer || !serial) return null;
+    if (manufacturer === "other") manufacturer = "other:" + normalizeText(record.manufacturer_other);
+    return manufacturer + "|" + serial;
+  }
+
+  // Possible duplicate nearby — a warning for the administrator (see importing.find_duplicate).
   function findDuplicate(values, candidates, excludeId) {
     var best = null, bestDistance = null;
     candidates.forEach(function (candidate) {
@@ -239,34 +254,38 @@
   }
 
   // Same contract as importing.plan_import().
-  function planImport(rows, ownRecords, allRecords, defaultOperator) {
-    var bySourceId = {};
-    ownRecords.forEach(function (r) { if (r.source_id) bySourceId[r.source_id] = r; });
-    var providerFields = fieldNames(true);
-    var errors = [], actions = [], firstRow = {}, invalid = {};
+  function planImport(rows, ownRecords, allRecords, institution) {
+    var comparedFields = V().recordFieldNames();
+    var errors = [], actions = [], rowOfKey = {}, invalid = {};
+    var ownIds = ownRecords.map(function (r) { return r.id; });
+    var byKey = {};
+    allRecords.concat(ownRecords).forEach(function (r) { var k = deviceKey(r); if (k) byKey[k] = r; });
     rows.forEach(function (row) {
       var number = row[0];
-      var result = V().validate(row[1], { optional: ["operator_name"] });
+      var result = V().validate(row[1]);
       var values = result.cleaned;
       Object.keys(result.errors).forEach(function (name) {
         errors.push({ row: number, field: name, message: result.errors[name] });
         invalid[number] = true;
       });
-      var sourceId = values.source_id;
-      if (sourceId) {
-        if (firstRow[sourceId] !== undefined) {
-          errors.push({ row: number, field: "source_id", message: msg("duplicate_source_id", sourceId, firstRow[sourceId]) });
-          invalid[number] = true;
-        } else {
-          firstRow[sourceId] = number;
-        }
-      }
       if (invalid[number]) return;
-      values.operator_name = values.operator_name || defaultOperator;
-      var existing = sourceId ? bySourceId[sourceId] || null : null;
+      Object.keys(institution).forEach(function (k) { values[k] = institution[k]; });
+      var key = deviceKey(values);
+      if (rowOfKey[key] !== undefined) {
+        errors.push({ row: number, field: "serial_number", message: msg("same_device", rowOfKey[key]) });
+        invalid[number] = true;
+        return;
+      }
+      rowOfKey[key] = number;
+      var existing = byKey[key] || null;
+      if (existing && ownIds.indexOf(existing.id) === -1) {
+        errors.push({ row: number, field: "serial_number", message: msg("device_elsewhere") });
+        invalid[number] = true;
+        return;
+      }
       var action = "create";
       if (existing) {
-        action = providerFields.some(function (name) { return normalize(values[name]) !== normalize(existing[name]); })
+        action = comparedFields.some(function (name) { return normalize(values[name]) !== normalize(existing[name]); })
           ? "update" : "unchanged";
       }
       var duplicate = { candidate: null, distance: null };
@@ -311,7 +330,7 @@
 
   function exportRecord(record) {
     var row = {};
-    fieldNames(false).forEach(function (name) {
+    V().publishedFieldNames().forEach(function (name) {
       var value = name === "id" ? record.uuid : record[name];
       if ((name === "latitude" || name === "longitude") && value !== null && value !== undefined) {
         value = Math.round(Number(value) * 1e6) / 1e6;
@@ -328,7 +347,7 @@
   }
 
   function toCsv(rows) {
-    var names = fieldNames(false);
+    var names = V().publishedFieldNames();
     var lines = [names.join(",")];
     rows.forEach(function (row) { lines.push(names.map(function (n) { return csvCell(n, row[n]); }).join(",")); });
     return lines.join("\r\n") + "\r\n";
@@ -363,6 +382,7 @@
     parseFile: parseFile,
     planImport: planImport,
     findDuplicate: findDuplicate,
+    deviceKey: deviceKey,
     distanceM: distanceM,
     nameSimilarity: nameSimilarity,
     exportRecord: exportRecord,

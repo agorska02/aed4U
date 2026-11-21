@@ -6,7 +6,7 @@
 (function () {
   "use strict";
 
-  var DB_KEY = "aed.mock.db.v3";
+  var DB_KEY = "aed.mock.db.v7";
   var memoryDb = null;
 
   function nowIso() { return new Date().toISOString().replace(/\.\d{3}Z$/, "Z"); }
@@ -35,12 +35,29 @@
     return report;
   }
 
+  // Institution profiles (portal: Organization.title/regon/tel/email) — same as standalone/seed.py, fictional.
+  var ORGANIZATIONS = [
+    { id: 1, title: "Urząd Miasta Demo (instytucja A)", regon: "123456785", phone: "120000000", email: "sekretariat@urzad-demo.example" },
+    { id: 2, title: "Szpital Demo (instytucja B)", regon: "987654325", phone: "580000000", email: "kontakt@szpital-demo.example" }
+  ];
+
+  // x-from-institution fields of a report, always taken from the institution profile.
+  function institutionValues(org) {
+    return { operator_name: org.title, operator_regon: org.regon, contact_phone: org.phone, contact_email: org.email };
+  }
+
   function seedDb() {
     var t = nowIso();
     var reports = (window.AED_EXAMPLES || []).map(function (row, index) {
       var seed = EXAMPLE_REPORTS[index] || [1, "submitted", ""];
       var verified = seed[1] === "verified" || seed[1] === "rejected";
-      var cleaned = window.AedValidator.validate(row).cleaned;
+      // serial numbers are internal (not in the published example file) — demo values, as in standalone/seed.py
+      var withSerial = {};
+      Object.keys(row).forEach(function (k) { withSerial[k] = row[k]; });
+      withSerial.serial_number = "DEMO-000" + (index + 1);
+      var cleaned = window.AedValidator.validate(withSerial).cleaned;
+      var profile = institutionValues(ORGANIZATIONS[seed[0] - 1]);
+      Object.keys(profile).forEach(function (k) { cleaned[k] = profile[k]; });
       return newReport(index + 1, cleaned, {
         uuid: row.id, organization_id: seed[0], source: row.source, status: seed[1], verification_comment: seed[2],
         verified_by_id: verified ? 3 : null, verified_at: verified ? row.verified_at : null,
@@ -49,10 +66,7 @@
     });
     return {
       seq: reports.length,
-      organizations: [
-        { id: 1, title: "Urząd Miasta Demo (instytucja A)" },
-        { id: 2, title: "Szpital Demo (instytucja B)" }
-      ],
+      organizations: ORGANIZATIONS.map(function (o) { return JSON.parse(JSON.stringify(o)); }),
       users: [
         { id: 1, email: "dostawca@demo.local", fullname: "Dostawca A", password: "Demo123!", roles: ["editor"], organizations: [1] },
         { id: 2, email: "dostawca2@demo.local", fullname: "Dostawca B", password: "Demo123!", roles: ["editor"], organizations: [2] },
@@ -98,11 +112,15 @@
 
   var META_ATTRIBUTES = ["uuid", "source", "status", "verification_comment", "verified_at", "created", "modified"];
 
-  function serialize(db, r) {
+  // Collected for the portal administrator only — never sent to providers nor published.
+  var ADMIN_ONLY = ["internal_contact_phone", "serial_number"];
+
+  function serialize(db, r, user) {
     var org = db.organizations.filter(function (o) { return o.id === r.organization_id; })[0];
     var attributes = { organization_title: org ? org.title : "" };
-    window.AedValidator.fields(true).forEach(function (f) {
-      attributes[f.name] = r[f.name] === undefined ? null : r[f.name];
+    window.AedValidator.recordFieldNames().forEach(function (name) {
+      if (ADMIN_ONLY.indexOf(name) !== -1 && !isAdmin(user)) return;
+      attributes[name] = r[name] === undefined ? null : r[name];
     });
     META_ATTRIBUTES.forEach(function (name) { attributes[name] = r[name]; });
     var duplicate = r.possible_duplicate_of_id
@@ -124,8 +142,43 @@
     return { error: "Wybierz instytucję, której dotyczy zgłoszenie." };
   }
 
-  function organizationTitle(db, id) {
-    return db.organizations.filter(function (o) { return o.id === id; })[0].title;
+  function organizationById(db, id) {
+    return db.organizations.filter(function (o) { return o.id === id; })[0];
+  }
+
+  function planFor(db, rows, orgId) {
+    var own = db.reports.filter(function (r) { return r.organization_id === orgId; });
+    return window.AedImport.planImport(rows, own, db.reports, institutionValues(organizationById(db, orgId)));
+  }
+
+  // Apply planned actions (same as standalone/server.py _apply_import); returns record ids in row order.
+  function applyPlan(db, plan, orgId, user, source) {
+    var t = nowIso();
+    var createdForRow = {};
+    var ids = [];
+    plan.actions.forEach(function (a) {
+      if (a.action === "unchanged") { ids.push(a.record_id); return; }
+      var duplicateId = a.duplicate_of_row !== null ? createdForRow[a.duplicate_of_row] || null : a.duplicate_of;
+      var meta = { source: source, status: "submitted", verification_comment: "", verified_by_id: null, verified_at: null,
+        modified: t, modified_by_id: user.id, possible_duplicate_of_id: duplicateId,
+        possible_duplicate_distance_m: a.duplicate_distance_m };
+      if (a.action === "create") {
+        db.seq += 1;
+        meta.uuid = uuid4();
+        meta.organization_id = orgId;
+        meta.created = t;
+        meta.created_by_id = user.id;
+        db.reports.push(newReport(db.seq, a.values, meta));
+        createdForRow[a.row] = db.seq;
+        ids.push(db.seq);
+      } else {
+        var report = db.reports.filter(function (r) { return r.id === a.record_id; })[0];
+        Object.keys(a.values).forEach(function (k) { report[k] = a.values[k]; });
+        Object.keys(meta).forEach(function (k) { report[k] = meta[k]; });
+        ids.push(a.record_id);
+      }
+    });
+    return ids;
   }
 
   function download(text, contentType, filename) {
@@ -160,6 +213,17 @@
         attributes: { email: user.email, fullname: user.fullname, token: token, roles: user.roles } } });
     },
 
+    "GET /auth/user": function (db, payload, token) {
+      var auth = currentUser(db, token, ["editor", "admin"]);
+      if (auth.error) return auth.error;
+      var institutions = db.organizations.filter(function (o) {
+        return isAdmin(auth.user) || auth.user.organizations.indexOf(o.id) !== -1;
+      });
+      return ok(200, { data: { type: "user", id: String(auth.user.id), attributes: {
+        email: auth.user.email, fullname: auth.user.fullname, roles: auth.user.roles, institutions: institutions
+      } } });
+    },
+
     "POST /auth/logout": function (db, payload, token) {
       delete db.sessions[token];
       saveDb(db);
@@ -171,7 +235,7 @@
       if (auth.error) return auth.error;
       var data = visibleReports(db, auth.user)
         .sort(function (a, b) { return b.id - a.id; })
-        .map(function (r) { return serialize(db, r); });
+        .map(function (r) { return serialize(db, r, auth.user); });
       return ok(200, { data: data, meta: { count: data.length } });
     },
 
@@ -183,28 +247,23 @@
       if (!attrs) return error(422, "Field error", "Nieprawidłowa struktura zapytania.");
       var record = {};
       Object.keys(attrs).forEach(function (name) { if (name !== "organization") record[name] = attrs[name]; });
-      // operator_name defaults to the institution's name, so it is not required from the form
-      var result = window.AedValidator.validate(record, { optional: ["operator_name"] });
-      var errors = result.errors;
-
       var org = resolveOrganization(db, user, attrs.organization);
-      if (org.error) errors.organization = org.error;
-      if (Object.keys(errors).length) return fieldErrors(errors);
-
-      var cleaned = result.cleaned;
-      if (!cleaned.operator_name) cleaned.operator_name = organizationTitle(db, org.id);
-      var duplicate = window.AedImport.findDuplicate(cleaned, db.reports, null);
-      var t = nowIso();
-      db.seq += 1;
-      var report = newReport(db.seq, cleaned, {
-        uuid: uuid4(), organization_id: org.id, source: "form", status: "submitted", verification_comment: "",
-        verified_by_id: null, verified_at: null, created: t, created_by_id: user.id, modified: t, modified_by_id: user.id,
-        possible_duplicate_of_id: duplicate.candidate ? duplicate.candidate.id : null,
-        possible_duplicate_distance_m: duplicate.distance
-      });
-      db.reports.push(report);
+      if (org.error) {
+        var errors = window.AedValidator.validate(record).errors;
+        errors.organization = org.error;
+        return fieldErrors(errors);
+      }
+      // The form is a one-row import: same rules (institution profile, device identity, duplicates).
+      var plan = planFor(db, [[1, record]], org.id);
+      if (plan.errors.length) {
+        var byField = {};
+        plan.errors.forEach(function (e) { byField[e.field] = e.message; });
+        return fieldErrors(byField);
+      }
+      var reportId = applyPlan(db, plan, org.id, user, "form")[0];
       saveDb(db);
-      return ok(201, { data: serialize(db, report) });
+      var report = db.reports.filter(function (r) { return r.id === reportId; })[0];
+      return ok(201, { data: serialize(db, report, user) });
     },
 
     "POST /aed-report-imports": function (db, payload, token) {
@@ -239,33 +298,10 @@
         if (e instanceof window.AedImport.ImportFileError) return response("rejected", null, e.message);
         throw e;
       }
-      var own = db.reports.filter(function (r) { return r.organization_id === org.id; });
-      var plan = window.AedImport.planImport(rows, own, db.reports, organizationTitle(db, org.id));
+      var plan = planFor(db, rows, org.id);
       if (plan.errors.length) return response("rejected", plan);
       if (dryRun) return response("dry_run", plan);
-
-      var t = nowIso();
-      var createdForRow = {};
-      plan.actions.forEach(function (a) {
-        if (a.action === "unchanged") return;
-        var duplicateId = a.duplicate_of_row !== null ? createdForRow[a.duplicate_of_row] || null : a.duplicate_of;
-        var meta = { source: "import", status: "submitted", verification_comment: "", verified_by_id: null, verified_at: null,
-          modified: t, modified_by_id: auth.user.id, possible_duplicate_of_id: duplicateId,
-          possible_duplicate_distance_m: a.duplicate_distance_m };
-        if (a.action === "create") {
-          db.seq += 1;
-          meta.uuid = uuid4();
-          meta.organization_id = org.id;
-          meta.created = t;
-          meta.created_by_id = auth.user.id;
-          db.reports.push(newReport(db.seq, a.values, meta));
-          createdForRow[a.row] = db.seq;
-        } else {
-          var report = db.reports.filter(function (r) { return r.id === a.record_id; })[0];
-          Object.keys(a.values).forEach(function (k) { report[k] = a.values[k]; });
-          Object.keys(meta).forEach(function (k) { report[k] = meta[k]; });
-        }
-      });
+      applyPlan(db, plan, org.id, auth.user, "import");
       saveDb(db);
       return response("imported", plan);
     },
@@ -315,7 +351,7 @@
       report.modified = t;
       report.modified_by_id = auth.user.id;
       saveDb(db);
-      return ok(202, { data: serialize(db, report) });
+      return ok(202, { data: serialize(db, report, auth.user) });
     }
   };
 
