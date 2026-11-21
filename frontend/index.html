@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zgłoś dostępność urządzenia AED – prototyp</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="config.js"></script>
+  <script src="api-mock.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Przejdź do treści</a>
+
+  <div class="prototype-banner" role="note">
+    Prototyp – wersja testowa przygotowana na hackathon. Nie jest częścią serwisu produkcyjnego.
+    <span id="demo-banner" hidden>
+      <strong>Tryb demo</strong> – <span id="demo-mode"></span>.
+      <button type="button" class="btn btn--small" id="demo-reset" hidden>Przywróć dane demo</button>
+    </span>
+  </div>
+
+  <header class="site-header">
+    <div class="container site-header__inner">
+      <a class="site-header__brand" href="#">
+        <span class="site-header__logo" aria-hidden="true"></span>
+        <span>Portal otwartych danych <small>(prototyp)</small></span>
+      </a>
+      <nav aria-label="Menu główne">
+        <ul class="site-nav">
+          <li><a href="#">Dane</a></li>
+          <li><a href="#">Aplikacje</a></li>
+          <li><a href="index.html" aria-current="page">Zgłoś AED</a></li>
+          <li><a href="admin.html">Weryfikacja (admin)</a></li>
+        </ul>
+      </nav>
+      <div class="site-header__user" id="user-bar" hidden>
+        <span id="user-email"></span>
+        <button type="button" class="btn btn--link" id="logout-btn">Wyloguj</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="container">
+    <nav aria-label="Ścieżka nawigacji">
+      <ol class="breadcrumbs">
+        <li><a href="#">Strona główna</a></li>
+        <li aria-current="page">Zgłoś dostępność urządzenia AED</li>
+      </ol>
+    </nav>
+
+    <h1>Zgłoś dostępność urządzenia AED</h1>
+    <p class="lead">
+      Formularz dla dostawców danych. Zgłoszenia trafiają do weryfikacji przez administratora portalu.
+    </p>
+
+    <div id="global-status" class="alert" role="status" aria-live="polite" hidden></div>
+
+    <!-- Step 1: provider login (same account as the portal's Administration Panel) -->
+    <section class="card" id="login-section" aria-labelledby="login-heading">
+      <h2 id="login-heading">Zaloguj się</h2>
+      <p class="hint">
+        Użyj konta edytora instytucji. Nie masz uprawnień edytora? Napisz na
+        <a href="mailto:kontakt@dane.gov.pl">kontakt@dane.gov.pl</a>, podając nazwę instytucji.
+      </p>
+      <div class="demo-accounts" id="demo-accounts" hidden>
+        <p><strong>Konta demo</strong> (dane testowe):</p>
+        <ul>
+          <li><code>dostawca@demo.local</code> / <code>Demo123!</code> – edytor instytucji A</li>
+          <li><code>dostawca2@demo.local</code> / <code>Demo123!</code> – edytor instytucji B</li>
+          <li><code>admin@demo.local</code> / <code>Admin123!</code> – administrator (<a href="admin.html">weryfikacja</a>)</li>
+        </ul>
+      </div>
+      <form id="login-form" novalidate>
+        <div class="field">
+          <label for="email">Służbowy adres e-mail</label>
+          <input id="email" name="email" type="email" autocomplete="username" required aria-describedby="email-error">
+          <p id="email-error" class="field__error" hidden></p>
+        </div>
+        <div class="field">
+          <label for="password">Hasło</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required
+                 aria-describedby="password-error">
+          <p id="password-error" class="field__error" hidden></p>
+        </div>
+        <button type="submit" class="btn btn--primary">Zaloguj</button>
+      </form>
+    </section>
+
+    <!-- Step 2: report form + provider's reports -->
+    <div id="app-section" hidden>
+      <section class="card" aria-labelledby="form-heading">
+        <h2 id="form-heading">Nowe zgłoszenie</h2>
+        <p class="hint">Pola oznaczone <span aria-hidden="true">*</span><span class="sr-only">gwiazdką</span> są wymagane.</p>
+
+        <!-- Skeleton: placeholder fields only — target AED fields will be added together with DB columns. -->
+        <form id="aed-form" novalidate>
+          <div class="field">
+            <label for="location_name">Nazwa lokalizacji <span aria-hidden="true">*</span></label>
+            <input id="location_name" name="location_name" type="text" maxlength="300" required
+                   aria-describedby="location_name-error">
+            <p id="location_name-error" class="field__error" hidden></p>
+          </div>
+
+          <div class="field">
+            <label for="data_date">Dane na dzień</label>
+            <input id="data_date" name="data_date" type="date" aria-describedby="data_date-hint data_date-error">
+            <p id="data_date-hint" class="hint">Data, na którą informacja o urządzeniu jest aktualna. Domyślnie dzisiaj.</p>
+            <p id="data_date-error" class="field__error" hidden></p>
+          </div>
+
+          <div class="field">
+            <label for="notes">Uwagi</label>
+            <textarea id="notes" name="notes" rows="4" maxlength="3000" aria-describedby="notes-error"></textarea>
+            <p id="notes-error" class="field__error" hidden></p>
+          </div>
+
+          <p id="organization-error" class="field__error" hidden></p>
+
+          <button type="submit" class="btn btn--primary">Prześlij do weryfikacji</button>
+        </form>
+      </section>
+
+      <section class="card card--wide" aria-labelledby="reports-heading">
+        <h2 id="reports-heading">Zgłoszenia mojej instytucji</h2>
+        <p id="reports-empty" class="hint" hidden>Brak zgłoszeń.</p>
+        <div class="table-wrap">
+          <table class="table" id="reports-table" hidden>
+            <caption class="sr-only">Lista zgłoszeń AED z ich statusem weryfikacji</caption>
+            <thead>
+              <tr>
+                <th scope="col">Lokalizacja</th>
+                <th scope="col">Instytucja</th>
+                <th scope="col">Dane na dzień</th>
+                <th scope="col">Status</th>
+                <th scope="col">Komentarz weryfikatora</th>
+              </tr>
+            </thead>
+            <tbody id="reports-body"></tbody>
+          </table>
+        </div>
+        <p class="hint">
+          Zgłoszenia weryfikuje administrator portalu. Odrzucone zgłoszenie poprawiasz w
+          <a id="admin-link" href="admin.html">Panelu Administratora</a> portalu i przesyłasz ponownie
+          <span id="demo-resubmit-note" hidden>(w demo: wyślij nowe zgłoszenie)</span>.
+        </p>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>Prototyp podstrony w architekturze portalu otwartych danych (mcod). Dane testowe.</p>
+    </div>
+  </footer>
+</body>
+</html>
