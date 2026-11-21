@@ -61,6 +61,9 @@ Dlaczego te pola:
 - Służby ratunkowe i świadek zdarzenia potrzebują przede wszystkim odpowiedzi na trzy pytania:
   **gdzie dokładnie** (współrzędne i opis miejsca), **czy mogę teraz skorzystać** (`access`,
   `opening_hours`, `device_status`) oraz **czy nadaje się dla dziecka** (`pediatric`).
+- `opening_hours` to podzbiór składni OpenStreetMap: `24/7`, reguły `[miesiące] [dni] godziny` rozdzielone `; `,
+  np. `Mo-Fr 08:00-16:00; Sa 09:00-13:00; Su off; PH off`. `PH` to polskie święta ustawowe (reguła `PH` na końcu
+  nadpisuje dni tygodnia), miesiące (`May-Sep …`) oznaczają sezon – poza nim urządzenie jest niedostępne.
 - Daty przeglądu i terminy ważności elektrod i baterii pozwalają dysponentowi pilnować sprawności
   urządzenia, a koordynatorowi zbioru wykrywać rekordy wymagające uwagi.
 - `data_date` i `verified_at` pokazują, na ile aktualna jest informacja.

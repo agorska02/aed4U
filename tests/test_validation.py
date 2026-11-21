@@ -44,9 +44,24 @@ class ValidatorTest(unittest.TestCase):
         self.assertIn(("public", "dostępny publicznie"), enum_choices("access"))
 
     def test_opening_hours_subset(self):
-        for value in ("24/7", "Mo-Su 00:00-24:00", "Mo-Fr 07:30-15:30; Sa 09:00-13:00", "Mo-Fr 08:00-12:00,13:00-16:00; PH off"):
+        for value in (
+            "24/7",
+            "Mo-Su 00:00-24:00",
+            "Mo-Fr 07:30-15:30; Sa 09:00-13:00",
+            "Mo-Fr 08:00-12:00,13:00-16:00; PH off",
+            "May-Sep 08:00-20:00",
+            "Jun-Aug Mo-Fr 08:00-16:00; Jun-Aug Sa,Su,PH off",
+            "Nov-Feb PH 10:00-14:00",
+        ):
             self.assertRegex(value, OPENING_HOURS_RE)
-        for value in ("całą dobę", "8-16", "Mo-Fr 8:00-16:00", "Mo-Fr 08:00-16:00;; Sa off"):
+        for value in (
+            "całą dobę",
+            "8-16",
+            "Mo-Fr 8:00-16:00",
+            "Mo-Fr 08:00-16:00;; Sa off",
+            "Maj-Wrz 08:00-20:00",
+            "Mo-Fr May-Sep 08:00-16:00",
+        ):
             self.assertNotRegex(value, OPENING_HOURS_RE)
 
 
