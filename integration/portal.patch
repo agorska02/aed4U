@@ -1,0 +1,38 @@
+--- a/mcod/routes.py
++++ b/mcod/routes.py
+@@ -1,4 +1,5 @@
+ from mcod.academy import views as academy_views
++from mcod.aed.routes import routes as aed_routes
+ from mcod.core.api.utils import views as core_views
+ from mcod.core.api.views import MetricsResource
+ from mcod.datasets import views as dataset_views
+@@ -336,5 +337,6 @@
+     ("/reports/brokenlinks/{extension}", reports_views.PublicBrokenLinksReportDownloadView()),
+ ]
+ 
++routes.extend(aed_routes)
+ 
+ routes.extend(list(map(lambda x: ("/{api_version}" + x[0], *x[1:]), routes)))
+--- a/mcod/settings/base.py
++++ b/mcod/settings/base.py
+@@ -146,6 +146,7 @@
+     "mcod.alerts",
+     "mcod.watchers",
+     "mcod.suggestions",
++    "mcod.aed",
+     "mcod.newsletter",
+     "mcod.harvester",
+     "mcod.cms",
+@@ -686,6 +687,12 @@
+             ],
+         },
+         {
++            "label": _("AED availability reports"),
++            "url": "/aed/aedreport/",
++            "icon": "icon-heart",
++            "orig_url": "/aed/aedreport/",
++        },
++        {
+             "label": _("Configuration"),
+             "url": "/constance/config",
+             "permissions": "auth.add_user",
