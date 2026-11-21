@@ -474,6 +474,104 @@ input[type="file"] { font: inherit; max-width: 100%; }
 .location-picker { margin: 0 0 16px; }
 .location-picker .map { height: 320px; min-height: 0; margin-top: 8px; }
 
+/* Report form wizard (steps) */
+.steps {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin: 0 0 20px;
+  padding: 0;
+  counter-reset: none;
+  font-size: 0.875rem;
+}
+.steps__item > span,
+.steps__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 4px 10px;
+  border-radius: 16px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-muted);
+  font: inherit;
+}
+.steps__link { cursor: pointer; color: var(--color-primary); border-color: var(--color-primary); background: #fff; text-decoration: underline; }
+.steps__link:hover { background: #e8f0fb; }
+.steps__item--current > span { background: var(--color-primary); border-color: var(--color-primary); color: #fff; font-weight: 700; }
+.form-step__title { font-size: 1.25rem; margin: 0 0 8px; }
+.form-step__title:focus { outline: 3px solid var(--color-focus); outline-offset: 2px; }
+.form-step .form-section:first-of-type { border-top: 0; padding-top: 4px; }
+.form-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  border-top: 1px solid var(--color-border);
+  padding-top: 20px;
+  margin-top: 8px;
+}
+.form-nav .btn--primary { margin-left: auto; }
+
+/* Review step */
+.review-section { border-top: 1px solid var(--color-border); padding: 12px 0; }
+.review-section__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.review-section h4 { margin: 0; font-size: 1.0625rem; }
+.review-section dl {
+  display: grid;
+  grid-template-columns: minmax(8rem, max-content) 1fr;
+  gap: 4px 16px;
+  margin: 8px 0 0;
+}
+.review-section dt { color: var(--color-muted); }
+.review-section dd { margin: 0; overflow-wrap: anywhere; }
+
+/* Opening hours picker */
+.hours-picker [hidden] { display: none !important; } /* rows and spans below use flex */
+.hours-picker__custom {
+  margin: 8px 0 12px;
+  padding: 12px 16px;
+  background: var(--color-bg);
+  border-radius: var(--radius);
+}
+.hours-picker__check { margin: 8px 0; min-height: 44px; }
+.hours-row {
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  margin: 0;
+  padding: 10px 0;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+.hours-row:last-child { border-bottom: 0; }
+.hours-row__title { float: left; width: 11rem; padding: 0; font-weight: 600; }
+.hours-row__times { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.hours-row__break { flex-basis: 100%; padding-left: 0; }
+.hours-row__break-label { color: var(--color-muted); font-size: 0.875rem; }
+.hours-picker .field--inline label,
+.hours-picker__time label { margin: 0; font-weight: 400; }
+.hours-picker__time { display: inline-flex; align-items: center; gap: 6px; }
+.hours-picker .hours-picker__time input[type="time"],
+.hours-picker select { width: auto; padding: 6px 10px; min-height: 40px; font: inherit; }
+.hours-picker__season { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0 0 12px; }
+.hours-picker__preview { margin: 8px 0 0; font-weight: 600; }
+
+@media (max-width: 600px) {
+  .steps__item:not(.steps__item--current) .steps__label {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  }
+  .steps__item:not(.steps__item--current) > span,
+  .steps__link { min-width: 32px; justify-content: center; }
+  .hours-row__title { float: none; width: 100%; }
+  .hours-row__break-label { flex-basis: 100%; }
+  .form-nav .btn { flex: 1 1 auto; }
+}
+
 /* Footer */
 .site-footer {
   background: var(--color-text);

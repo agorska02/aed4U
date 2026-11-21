@@ -9,11 +9,13 @@
   var UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
   // Subset of the OpenStreetMap opening_hours syntax (see validation.py).
+  var MONTH = "(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)";
+  var MONTHS = MONTH + "(?:-" + MONTH + ")?(?:," + MONTH + "(?:-" + MONTH + ")?)*";
   var DAY = "(?:Mo|Tu|We|Th|Fr|Sa|Su|PH)";
   var DAYS = DAY + "(?:-" + DAY + ")?(?:," + DAY + "(?:-" + DAY + ")?)*";
   var TIME = "(?:[01][0-9]|2[0-4]):[0-5][0-9]";
   var SPANS = TIME + "-" + TIME + "(?:," + TIME + "-" + TIME + ")*";
-  var RULE = "(?:" + DAYS + " )?(?:" + SPANS + "|off|closed)";
+  var RULE = "(?:" + MONTHS + " )?(?:" + DAYS + " )?(?:" + SPANS + "|off|closed)";
   var OPENING_HOURS_RE = new RegExp("^(?:24/7|" + RULE + "(?:; ?" + RULE + ")*)$");
 
   var MESSAGES = {
@@ -32,7 +34,7 @@
     email: "Podaj poprawny adres e-mail.",
     uuid: "Podaj identyfikator UUID.",
     decimals: "Podaj najwyżej {0} miejsc po przecinku.",
-    opening_hours: "Użyj składni OpenStreetMap, np. 24/7 albo Mo-Fr 08:00-16:00; Sa 09:00-13:00.",
+    opening_hours: "Użyj składni OpenStreetMap, np. 24/7, Mo-Fr 08:00-16:00; Sa 09:00-13:00; PH off albo May-Sep 08:00-20:00.",
     unknown: "Nieznane pole – sprawdź nazwę kolumny w schemacie.",
     only_if: "Wypełnij tylko, gdy wybrano „{0}”."
   };

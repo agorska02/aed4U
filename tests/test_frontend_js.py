@@ -60,7 +60,8 @@ var exported = AedImport.toCsv(AED_EXAMPLES.map(function (row) {
 }));
 var hours = DATA.hours.status.map(function (c) { return AedHours.statusAt(c[0], new Date(c[1])); });
 var described = DATA.hours.describe.map(function (c) { return AedHours.describe(c[0]); });
-RESULT = {validation: validation, imports: imports, exported: exported, hours: hours, described: described};
+var always = DATA.hours.always.map(function (c) { return AedHours.isAlwaysOpen(c[0]); });
+RESULT = {validation: validation, imports: imports, exported: exported, hours: hours, described: described, always: always};
 """
 
 PAGE = """<!doctype html><meta charset="utf-8"><body><pre id="out"></pre>{scripts}
@@ -120,6 +121,9 @@ class FrontendJsTest(unittest.TestCase):
 
     def test_opening_hours_description(self):
         self.assertEqual(self.result["described"], [c[1] for c in self.hours_cases["describe"]])
+
+    def test_opening_hours_always_open(self):
+        self.assertEqual(self.result["always"], [c[1] for c in self.hours_cases["always"]])
 
     def test_csv_export_matches_python(self):
         self.assertEqual(self.result["exported"], to_csv([export_record(r) for r in stored_examples()]))

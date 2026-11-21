@@ -1,5 +1,5 @@
 {
- "$comment": "Cases for frontend/aed-hours.js: [opening_hours, local date-time, expected open|closed|unknown]. 2026-11-23 is a Monday.",
+ "$comment": "Cases for frontend/aed-hours.js: status = [opening_hours, local date-time, expected open|closed|unknown]; describe = [opening_hours, Polish text]; always = [opening_hours, open all the time]. 2026-11-23 is a Monday; Polish public holidays used: 2026-11-11 (Wed), 2026-04-06 (Easter Monday), 2026-06-04 (Corpus Christi), 2026-12-24 (Thu).",
  "status": [
   [
    "24/7",
@@ -95,6 +95,76 @@
    "",
    "2026-11-23T09:00",
    "unknown"
+  ],
+  [
+   "Mo-Fr 08:00-16:00; PH off",
+   "2026-11-11T10:00",
+   "closed"
+  ],
+  [
+   "Mo-Fr 08:00-16:00",
+   "2026-11-11T10:00",
+   "open"
+  ],
+  [
+   "Mo-Fr 08:00-16:00; Sa,Su off; PH 10:00-14:00",
+   "2026-11-11T11:00",
+   "open"
+  ],
+  [
+   "Mo-Fr 08:00-16:00; Sa,Su off; PH 10:00-14:00",
+   "2026-11-11T15:00",
+   "closed"
+  ],
+  [
+   "Mo-Fr 08:00-16:00; PH off",
+   "2026-04-06T10:00",
+   "closed"
+  ],
+  [
+   "Mo-Fr 08:00-16:00; PH off",
+   "2026-06-04T10:00",
+   "closed"
+  ],
+  [
+   "Mo-Fr 08:00-16:00; PH off",
+   "2026-12-24T10:00",
+   "closed"
+  ],
+  [
+   "Mo-Fr 08:00-16:00; PH off",
+   "2026-12-23T10:00",
+   "open"
+  ],
+  [
+   "Mo-Su 08:00-20:00; Su,PH off",
+   "2026-11-11T10:00",
+   "closed"
+  ],
+  [
+   "May-Sep 08:00-20:00",
+   "2026-07-15T10:00",
+   "open"
+  ],
+  [
+   "May-Sep 08:00-20:00",
+   "2026-11-23T10:00",
+   "closed"
+  ],
+  [
+   "Nov-Feb Sa 10:00-14:00",
+   "2026-11-28T11:00",
+   "open"
+  ],
+  [
+   "Nov-Feb Sa 10:00-14:00",
+   "2026-11-27T11:00",
+   "closed"
+  ],
+  [
+   "Jun-Aug Mo-Fr 08:00-16:00; Jun-Aug PH off",
+   "2026-06-04T10:00",
+   "closed"
   ]
  ],
  "describe": [
@@ -105,6 +175,52 @@
   [
    "Mo-Fr 08:00-16:00; Sa off",
    "pn–pt 08:00–16:00; sob nieczynne"
+  ],
+  [
+   "Mo-Fr 08:00-16:00; Sa,Su off; PH off",
+   "pn–pt 08:00–16:00; sob, nd nieczynne; święta nieczynne"
+  ],
+  [
+   "May-Sep 00:00-24:00",
+   "maj–wrz: całą dobę"
+  ],
+  [
+   "Oct-Mar Mo-Fr 08:00-12:00,13:00-16:00",
+   "paź–mar: pn–pt 08:00–12:00, 13:00–16:00"
+  ],
+  [
+   "Apr-Oct Mo-Fr 08:00-16:00; Apr-Oct Sa,Su,PH off",
+   "kwi–paź: pn–pt 08:00–16:00; sob, nd, święta nieczynne"
+  ],
+  [
+   "May-Sep Mo-Fr 08:00-16:00; Sa off",
+   "maj–wrz: pn–pt 08:00–16:00; sob nieczynne"
+  ]
+ ],
+ "always": [
+  [
+   "24/7",
+   true
+  ],
+  [
+   "Mo-Su 00:00-24:00",
+   true
+  ],
+  [
+   "00:00-24:00",
+   true
+  ],
+  [
+   "Mo-Fr 00:00-24:00",
+   false
+  ],
+  [
+   "May-Sep 00:00-24:00",
+   false
+  ],
+  [
+   "pn-pt",
+   false
   ]
  ]
 }

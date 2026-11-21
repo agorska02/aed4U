@@ -16,6 +16,8 @@
   <script src="aed-validator.js" defer></script>
   <script src="aed-import.js" defer></script>
   <script src="api-mock.js" defer></script>
+  <script src="aed-hours.js" defer></script>
+  <script src="hours-picker.js" defer></script>
   <script src="app.js" defer></script>
   <script src="provider-import.js" defer></script>
   <script src="location-picker.js" defer></script>
@@ -103,15 +105,23 @@
         <h2 id="form-heading">Nowe zgłoszenie</h2>
         <p class="hint">Pola oznaczone <span aria-hidden="true">*</span><span class="sr-only">gwiazdką</span> są wymagane.</p>
 
+        <nav aria-label="Kroki formularza">
+          <ol id="form-steps" class="steps"></ol>
+        </nav>
+
         <div id="form-error-summary" class="error-summary" role="alert" tabindex="-1" hidden></div>
 
-        <!-- Fields are generated from the reference data scope (aed-schema.js) by app.js. -->
+        <!-- Fields are generated from the reference data scope (aed-schema.js) by app.js, one step at a time. -->
         <form id="aed-form" novalidate>
           <div id="aed-form-fields"></div>
 
           <p id="organization-error" class="field__error" hidden></p>
 
-          <button type="submit" class="btn btn--primary">Prześlij do weryfikacji</button>
+          <div class="form-nav">
+            <button type="button" id="step-back" class="btn btn--secondary">Wstecz</button>
+            <button type="button" id="step-next" class="btn btn--primary">Dalej</button>
+            <button type="submit" id="form-submit" class="btn btn--primary">Prześlij do weryfikacji</button>
+          </div>
         </form>
       </section>
 
@@ -119,9 +129,8 @@
         <h2 id="import-heading">Import wielu urządzeń z pliku</h2>
         <p class="hint">
           Masz już rejestr urządzeń? Prześlij plik zgodny z wzorcowym zakresem danych – CSV (UTF-8, separator
-          przecinek lub średnik), JSON lub GeoJSON. Urządzenie, które Twoja instytucja już zgłosiła (to samo
-          miejsce – do 15 m, podobna nazwa lub ten sam adres – i ta sama kondygnacja), zostanie zaktualizowane,
-          a nie zdublowane.
+          przecinek lub średnik), JSON lub GeoJSON. Urządzenie, które Twoja instytucja już zgłosiła (ten sam
+          producent i numer seryjny), zostanie zaktualizowane, a nie zdublowane.
         </p>
         <ul class="download-list">
           <li><a href="../schema/aed-template.csv" download>Szablon CSV</a> – pusty, z nagłówkami kolumn</li>
