@@ -24,7 +24,7 @@
   <a class="skip-link" href="#main">Przejdź do treści</a>
 
   <div class="prototype-banner" role="note">
-    Prototyp – wersja testowa przygotowana na hackathon. Nie jest częścią serwisu produkcyjnego.
+    Prototyp – Nie jest częścią serwisu produkcyjnego.
     <span id="demo-banner" hidden>
       <strong>Tryb demo</strong> – <span id="demo-mode"></span>.
       <button type="button" class="btn btn--small" id="demo-reset" hidden>Przywróć dane demo</button>
@@ -103,11 +103,6 @@
         <h2 id="form-heading">Nowe zgłoszenie</h2>
         <p class="hint">Pola oznaczone <span aria-hidden="true">*</span><span class="sr-only">gwiazdką</span> są wymagane.</p>
 
-        <p class="hint">
-          Pola formularza to wzorcowy zakres danych o AED – ten sam dla wszystkich dysponentów, dzięki czemu
-          dane z wielu źródeł tworzą jeden ogólnopolski zbiór.
-        </p>
-
         <div id="form-error-summary" class="error-summary" role="alert" tabindex="-1" hidden></div>
 
         <!-- Fields are generated from the reference data scope (aed-schema.js) by app.js. -->
@@ -124,8 +119,9 @@
         <h2 id="import-heading">Import wielu urządzeń z pliku</h2>
         <p class="hint">
           Masz już rejestr urządzeń? Prześlij plik zgodny z wzorcowym zakresem danych – CSV (UTF-8, separator
-          przecinek lub średnik), JSON lub GeoJSON. Rekordy z tym samym identyfikatorem u dysponenta
-          (<code>source_id</code>) zostaną zaktualizowane, a nie zdublowane.
+          przecinek lub średnik), JSON lub GeoJSON. Urządzenie, które Twoja instytucja już zgłosiła (to samo
+          miejsce – do 15 m, podobna nazwa lub ten sam adres – i ta sama kondygnacja), zostanie zaktualizowane,
+          a nie zdublowane.
         </p>
         <ul class="download-list">
           <li><a href="../schema/aed-template.csv" download>Szablon CSV</a> – pusty, z nagłówkami kolumn</li>

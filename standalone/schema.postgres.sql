@@ -10,7 +10,10 @@ CREATE TABLE IF NOT EXISTS aed_meta (
 
 CREATE TABLE IF NOT EXISTS organizations (
     id serial PRIMARY KEY,
-    title text NOT NULL
+    title text NOT NULL,
+    regon varchar(14) NOT NULL DEFAULT '',            -- institution profile (portal: Organization.regon/tel/email)
+    phone varchar(9) NOT NULL DEFAULT '',
+    email varchar(254) NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS users (
@@ -39,7 +42,6 @@ CREATE TABLE IF NOT EXISTS aed_aedreport (
     uuid uuid NOT NULL UNIQUE,                        -- published as `id` in the dataset
     organization_id integer NOT NULL REFERENCES organizations (id) ON DELETE RESTRICT,
     source varchar(10) NOT NULL DEFAULT 'form' CHECK (source IN ('form', 'import', 'api')),
-    source_id varchar(100) NOT NULL DEFAULT '',
     -- operator
     operator_name varchar(300) NOT NULL,
     operator_regon varchar(14) NOT NULL DEFAULT '',
@@ -52,9 +54,7 @@ CREATE TABLE IF NOT EXISTS aed_aedreport (
     voivodeship varchar(30) NOT NULL DEFAULT '',
     county varchar(100) NOT NULL DEFAULT '',
     commune varchar(100) NOT NULL,
-    teryt_terc varchar(7) NOT NULL DEFAULT '',
     city varchar(200) NOT NULL,
-    teryt_simc varchar(7) NOT NULL DEFAULT '',
     street_type varchar(10) NOT NULL DEFAULT '',
     street varchar(200) NOT NULL DEFAULT '',
     street_number varchar(20) NOT NULL,
@@ -69,14 +69,19 @@ CREATE TABLE IF NOT EXISTS aed_aedreport (
     -- device
     device_status varchar(15) NOT NULL CHECK (device_status IN ('operational', 'out_of_service', 'removed')),
     pediatric varchar(7) NOT NULL DEFAULT '' CHECK (pediatric IN ('', 'yes', 'no', 'unknown')),
-    manufacturer varchar(100) NOT NULL DEFAULT '',
+    manufacturer varchar(20) NOT NULL,                -- code from schema/dictionaries/manufacturers.csv
+    manufacturer_other varchar(100) NOT NULL DEFAULT '', -- name when manufacturer = 'other'
     model varchar(100) NOT NULL DEFAULT '',
+    serial_number varchar(50) NOT NULL,               -- administrator only, never published
+    -- manufacturer + normalised serial number: one device cannot be reported in two places
+    device_key varchar(160) NOT NULL UNIQUE,
     last_inspection_date date,
     electrodes_expiry_date date,
     battery_expiry_date date,
-    -- contact (institutional only)
+    -- contact: operator_* and contact_* always come from the institution profile
     contact_phone varchar(9) NOT NULL DEFAULT '',
     contact_email varchar(254) NOT NULL DEFAULT '',
+    internal_contact_phone varchar(9) NOT NULL DEFAULT '',  -- administrator only, never published
     -- currency
     data_date date NOT NULL,
     notes text NOT NULL DEFAULT '',
@@ -97,4 +102,3 @@ CREATE TABLE IF NOT EXISTS aed_aedreport (
 
 CREATE INDEX IF NOT EXISTS aed_aedreport_organization_idx ON aed_aedreport (organization_id);
 CREATE INDEX IF NOT EXISTS aed_aedreport_status_idx ON aed_aedreport (status);
-CREATE INDEX IF NOT EXISTS aed_aedreport_source_id_idx ON aed_aedreport (organization_id, source_id);

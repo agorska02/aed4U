@@ -37,7 +37,9 @@ def base_provider_record():
     from aed.validation import field_names
 
     provider = set(field_names(provider_only=True))
-    return {key: value for key, value in example_rows()[0].items() if key in provider}
+    record = {key: value for key, value in example_rows()[0].items() if key in provider}
+    record["serial_number"] = "SN-TEST-0001"  # internal field, not in the published example file
+    return record
 
 
 def apply_changes(changes):

@@ -3,6 +3,7 @@
 Serves hackathon/frontend (and hackathon/schema under /schema/) and an API with the same contract as the
 portal module (hackathon/backend/aed):
 - POST /api/auth/login, /api/auth/logout — JWT-like bearer token
+- GET /api/auth/user — the logged-in user with the profiles of their institutions
 - GET/POST /api/aed-reports — provider's reports / new report from the form
 - POST /api/aed-report-imports — CSV/JSON/GeoJSON file from a data provider (dry run or import)
 - GET /api/aed-devices?format=csv|json|geojson — public unified dataset (verified records only)
@@ -38,6 +39,7 @@ from seed import (
     importing,
     init_db,
     insert_report,
+    institution_values,
     now_iso,
     seed,
     validate_record,
@@ -110,8 +112,12 @@ class Store:
             for row in self.query("SELECT organization_id FROM user_organizations WHERE user_id = ?", (user["id"],))
         ]
 
-    def organization_title(self, organization_id):
-        return self.query("SELECT title FROM organizations WHERE id = ?", (organization_id,))[0]["title"]
+    def organization(self, organization_id):
+        return self.query("SELECT * FROM organizations WHERE id = ?", (organization_id,))[0]
+
+    def organizations_of(self, user):
+        ids = self.organization_ids(user)
+        return [org for org in self.query("SELECT * FROM organizations ORDER BY id") if org["id"] in ids]
 
     def reports(self, user, report_id=None):
         sql = (
@@ -131,7 +137,7 @@ class Store:
         return self.query(sql + " ORDER BY r.created DESC, r.id DESC", params)
 
     def planning_records(self, organization_id=None):
-        """Records as dicts (schema fields + id, source_id) for importing.plan_import / find_duplicate."""
+        """Records as dicts (schema fields + id) for importing.plan_import / find_duplicate."""
         sql = "SELECT * FROM aed_aedreport"
         params = ()
         if organization_id is not None:
@@ -143,8 +149,12 @@ class Store:
         return self.query("SELECT * FROM aed_aedreport WHERE status = 'verified' ORDER BY id")
 
 
-def serialize_report(row, api_url):
-    attributes = {name: row[name] for name in AED_COLUMNS}
+# Collected for the portal administrator only — never sent to providers nor published.
+ADMIN_ONLY_COLUMNS = ("internal_contact_phone", "serial_number")
+
+
+def serialize_report(row, api_url, user):
+    attributes = {name: row[name] for name in AED_COLUMNS if user["is_superuser"] or name not in ADMIN_ONLY_COLUMNS}
     attributes["indoor"] = bool(row["indoor"])
     for name in ("uuid", "source", "organization_title", "status", "verification_comment", "verified_at", "created", "modified"):
         attributes[name] = row[name]
@@ -275,6 +285,8 @@ class Handler(SimpleHTTPRequestHandler):
     def _dispatch(self, method, path):
         if path == "/api/auth/login" and method == "POST":
             return self._login()
+        if path == "/api/auth/user" and method == "GET":
+            return self._current_user()
         if path == "/api/auth/logout" and method == "POST":
             return self._logout()
         if REPORT_LIST.match(path):
@@ -360,6 +372,15 @@ class Handler(SimpleHTTPRequestHandler):
         attributes = {"email": user["email"], "fullname": user["fullname"], "token": token, "roles": roles(user)}
         return HTTPStatus.CREATED, {"data": {"type": "user", "id": str(user["id"]), "attributes": attributes}}
 
+    def _current_user(self):
+        user = self._user()
+        institutions = [
+            {"id": org["id"], "title": org["title"], "regon": org["regon"], "phone": org["phone"], "email": org["email"]}
+            for org in self.store.organizations_of(user)
+        ]
+        attributes = {"email": user["email"], "fullname": user["fullname"], "roles": roles(user), "institutions": institutions}
+        return HTTPStatus.OK, {"data": {"type": "user", "id": str(user["id"]), "attributes": attributes}}
+
     def _logout(self):
         header = self.headers.get("Authorization", "")
         if header.startswith("Bearer "):
@@ -368,34 +389,31 @@ class Handler(SimpleHTTPRequestHandler):
 
     def _list_reports(self):
         user = self._user()
-        data = [serialize_report(row, self._api_url()) for row in self.store.reports(user)]
+        data = [serialize_report(row, self._api_url(), user) for row in self.store.reports(user)]
         return HTTPStatus.OK, {"data": data, "meta": {"count": len(data)}}
 
     def _create_report(self):
         user = self._user()
         attrs = dict(attributes_of(self._json(), "aed_report"))
         requested_org = attrs.pop("organization", None)
-        # operator_name defaults to the institution's name, so it is not required from the form
-        cleaned, errors = validate_record(attrs, optional=("operator_name",))
         organization, org_error = self._resolve_organization(user, requested_org)
-        if org_error:
+        if org_error:  # validate the record too, so the form shows every problem at once
+            errors = dict(validate_record(attrs)[1])
             errors["organization"] = org_error
-        if errors:
             raise ApiError(HTTPStatus.UNPROCESSABLE_ENTITY, "Field error", field_errors=errors)
-        cleaned["operator_name"] = cleaned["operator_name"] or self.store.organization_title(organization)
-        with self.store.db.transaction():
-            duplicate, distance = importing.find_duplicate(cleaned, self.store.planning_records())
-            report_id = insert_report(
-                self.store.db,
-                db_values(cleaned),
-                organization_id=organization,
-                user_id=user["id"],
-                status="submitted",
-                source="form",
-                possible_duplicate_of_id=duplicate["id"] if duplicate else None,
-                possible_duplicate_distance_m=distance,
+        # The form is a one-row import: same rules (institution profile, device identity, duplicates).
+        with self.store.lock:
+            plan = importing.plan_import(
+                [(1, attrs)],
+                self.store.planning_records(organization),
+                self.store.planning_records(),
+                institution_values(self.store.organization(organization)),
             )
-        return HTTPStatus.CREATED, {"data": serialize_report(self.store.reports(user, report_id)[0], self._api_url())}
+            if plan["errors"]:
+                errors = {e["field"]: e["message"] for e in plan["errors"]}
+                raise ApiError(HTTPStatus.UNPROCESSABLE_ENTITY, "Field error", field_errors=errors)
+            report_id = self._apply_import(plan, organization, user, source="form")[0]
+        return HTTPStatus.CREATED, {"data": serialize_report(self.store.reports(user, report_id)[0], self._api_url(), user)}
 
     def _import_reports(self):
         user = self._user()
@@ -426,7 +444,7 @@ class Handler(SimpleHTTPRequestHandler):
                 rows,
                 self.store.planning_records(organization),
                 self.store.planning_records(),
-                self.store.organization_title(organization),
+                institution_values(self.store.organization(organization)),
             )
             if plan["errors"]:
                 status = "rejected"
@@ -437,14 +455,19 @@ class Handler(SimpleHTTPRequestHandler):
                 self._apply_import(plan, organization, user)
         return HTTPStatus.CREATED, import_response(import_id, status, file_format, plan)
 
-    def _apply_import(self, plan, organization, user):
-        """Apply planned actions in one transaction; in-file duplicates point to the record created for that row."""
+    def _apply_import(self, plan, organization, user, source="import"):
+        """Apply planned actions in one transaction; in-file duplicates point to the record created for that row.
+
+        Returns the ids of the records the rows were applied to (created, updated or unchanged), in row order.
+        """
         db = self.store.db
         created_for_row = {}
+        record_ids = []
         timestamp = now_iso()
         with db.transaction():
             for action in plan["actions"]:
                 if action["action"] == "unchanged":
+                    record_ids.append(action["record_id"])
                     continue
                 duplicate_id = action["duplicate_of"]
                 if action["duplicate_of_row"] is not None:
@@ -457,21 +480,24 @@ class Handler(SimpleHTTPRequestHandler):
                         organization_id=organization,
                         user_id=user["id"],
                         status="submitted",
-                        source="import",
+                        source=source,
                         timestamp=timestamp,
                         possible_duplicate_of_id=duplicate_id,
                         possible_duplicate_distance_m=action["duplicate_distance_m"],
                     )
+                    record_ids.append(created_for_row[action["row"]])
                 else:  # update: changed data goes back to verification
+                    record_ids.append(action["record_id"])
                     assignments = ", ".join(f"{name} = ?" for name in values)
                     db.execute(
-                        f"UPDATE aed_aedreport SET {assignments}, source = 'import', status = 'submitted',"
+                        f"UPDATE aed_aedreport SET {assignments}, source = ?, status = 'submitted',"
                         " verification_comment = '', verified_by_id = NULL, verified_at = NULL,"
                         " possible_duplicate_of_id = ?, possible_duplicate_distance_m = ?, modified = ?, modified_by_id = ?"
                         " WHERE id = ?",
                         list(values.values())
-                        + [duplicate_id, action["duplicate_distance_m"], timestamp, user["id"], action["record_id"]],
+                        + [source, duplicate_id, action["duplicate_distance_m"], timestamp, user["id"], action["record_id"]],
                     )
+        return record_ids
 
     def _export_devices(self):
         """Public unified dataset: verified records only, columns of the reference data scope."""
@@ -522,7 +548,7 @@ class Handler(SimpleHTTPRequestHandler):
             " modified = ?, modified_by_id = ? WHERE id = ?",
             (status, comment.strip(), user["id"], timestamp, timestamp, user["id"], report_id),
         )
-        return HTTPStatus.ACCEPTED, {"data": serialize_report(self.store.reports(user, report_id)[0], self._api_url())}
+        return HTTPStatus.ACCEPTED, {"data": serialize_report(self.store.reports(user, report_id)[0], self._api_url(), user)}
 
 
 def make_server(host, port, db_target, quiet=False, reset=False):

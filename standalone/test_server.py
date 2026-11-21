@@ -24,6 +24,7 @@ ADMIN = ("admin@demo.local", "Admin123!")
 
 # A valid form submission: provider fields of the first example record, operator_name left to the default.
 VALID_ATTRIBUTES = {name: value for name, value in example_records()[0].items() if name in AED_COLUMNS and value}
+VALID_ATTRIBUTES["serial_number"] = "SN-FORM-0001"  # internal field, not in the published example file
 del VALID_ATTRIBUTES["operator_name"]
 
 
@@ -110,10 +111,38 @@ class DemoServerTest(unittest.TestCase):
         self.assertIn("instytucja A", attrs["organization_title"])
         self.assertEqual(attrs["operator_name"], attrs["organization_title"])  # default
 
-    def test_operator_name_can_differ_from_institution(self):
+    def test_operator_and_public_contact_always_come_from_institution(self):
         token = self.login(PROVIDER_A)
-        _status, body = self.create(token, operator_name="Ochotnicza Straż Pożarna Demo")
-        self.assertEqual(body["data"]["attributes"]["operator_name"], "Ochotnicza Straż Pożarna Demo")
+        _status, body = self.create(
+            token, operator_name="Inny podmiot", operator_regon="111111111", contact_phone="999999999", contact_email="x@y.pl"
+        )
+        attrs = body["data"]["attributes"]
+        self.assertEqual(attrs["operator_name"], "Urząd Miasta Demo (instytucja A)")
+        self.assertEqual(attrs["operator_regon"], "123456785")
+        self.assertEqual(attrs["contact_phone"], "120000000")
+        self.assertEqual(attrs["contact_email"], "sekretariat@urzad-demo.example")
+
+    def test_current_user_with_institution_profile(self):
+        status, body = self.request("GET", "/api/auth/user", token=self.login(PROVIDER_A))
+        self.assertEqual(status, 200)
+        institutions = body["data"]["attributes"]["institutions"]
+        self.assertEqual([i["regon"] for i in institutions], ["123456785"])
+        self.assertEqual(self.request("GET", "/api/auth/user")[0], 401)
+
+    def test_internal_contact_phone_is_for_the_administrator_only(self):
+        provider = self.login(PROVIDER_A)
+        status, body = self.create(provider, internal_contact_phone="601602603")
+        self.assertEqual(status, 201, body)
+        self.assertNotIn("internal_contact_phone", body["data"]["attributes"])
+        _status, body = self.request("GET", "/api/aed-reports", token=provider)
+        self.assertTrue(all("internal_contact_phone" not in item["attributes"] for item in body["data"]))
+        _status, body = self.request("GET", "/api/aed-reports", token=self.login(ADMIN))
+        self.assertIn("601602603", [item["attributes"]["internal_contact_phone"] for item in body["data"]])
+
+    def test_internal_contact_phone_is_validated(self):
+        status, body = self.create(self.login(PROVIDER_A), internal_contact_phone="+48 601")
+        self.assertEqual(status, 422)
+        self.assertEqual(body["errors"][0]["source"]["pointer"], "/data/attributes/internal_contact_phone")
 
     def test_provider_sees_only_own_institution(self):
         token_b = self.login(PROVIDER_B)
@@ -158,7 +187,7 @@ class DemoServerTest(unittest.TestCase):
         provider = self.login(PROVIDER_A)
         admin = self.login(ADMIN)
         first = self.create(provider)[1]["data"]["id"]
-        second = self.create(provider)[1]["data"]["id"]
+        second = self.create(provider, serial_number="SN-FORM-0002")[1]["data"]["id"]
 
         status, body = self.verify(admin, first, status="verified")
         self.assertEqual(status, 202, body)
@@ -188,21 +217,25 @@ class DemoServerTest(unittest.TestCase):
         return self.request("POST", "/api/aed-report-imports", payload, token)
 
     def csv_file(self, *rows):
-        header = "source_id,location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,data_date"
+        header = "location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date"
         return "\n".join([header] + list(rows)) + "\n"
 
     @staticmethod
-    def csv_row(source_id, name="Basen miejski", lat="50.080000", lon="19.950000", postal="31-004", hours="24/7"):
-        return f"{source_id},{name},hol,true,Kraków,Kraków,3,{postal},{lat},{lon},public,{hours},operational,2026-11-20"
+    def csv_row(name="Basen miejski", lat="50.080000", lon="19.950000", postal="31-004", hours="24/7", serial="SN-1"):
+        return f"{name},hol,true,Kraków,Kraków,3,{postal},{lat},{lon},public,{hours},operational,zoll,{serial},2026-11-20"
+
+    def reports_named(self, token, name):
+        reports = self.request("GET", "/api/aed-reports", token=token)[1]["data"]
+        return [r for r in reports if r["attributes"]["location_name"] == name]
 
     def test_import_requires_editor(self):
-        self.assertEqual(self.import_file(None, self.csv_file(self.csv_row("B1")))[0], 401)
+        self.assertEqual(self.import_file(None, self.csv_file(self.csv_row()))[0], 401)
 
     def test_dry_run_does_not_write(self):
         token = self.login(PROVIDER_A)
         before = len(self.request("GET", "/api/aed-reports", token=token)[1]["data"])
         status, body = self.import_file(
-            token, self.csv_file(self.csv_row("B1"), self.csv_row("B2", name="Szkoła", lat="50.090000"))
+            token, self.csv_file(self.csv_row(), self.csv_row(name="Szkoła", lat="50.090000", serial="SN-2"))
         )
         self.assertEqual(status, 201, body)
         attrs = body["data"]["attributes"]
@@ -210,31 +243,63 @@ class DemoServerTest(unittest.TestCase):
         self.assertEqual(attrs["summary"]["create"], 2)
         self.assertEqual(len(self.request("GET", "/api/aed-reports", token=token)[1]["data"]), before)
 
-    def test_import_creates_then_updates_by_source_id(self):
+    def test_import_creates_then_updates_the_same_device(self):
         token = self.login(PROVIDER_A)
-        status, body = self.import_file(token, self.csv_file(self.csv_row("B1")), dry_run=False)
+        status, body = self.import_file(token, self.csv_file(self.csv_row()), dry_run=False)
         self.assertEqual(body["data"]["attributes"]["status"], "imported", body)
-        reports = self.request("GET", "/api/aed-reports", token=token)[1]["data"]
-        imported = [r for r in reports if r["attributes"]["source_id"] == "B1"]
+        imported = self.reports_named(token, "Basen miejski")
         self.assertEqual(len(imported), 1)
         self.assertEqual(imported[0]["attributes"]["source"], "import")
         self.assertEqual(imported[0]["attributes"]["operator_name"], imported[0]["attributes"]["organization_title"])
 
-        # same file again: nothing changes; changed opening hours: the record is updated, not duplicated
-        _status, body = self.import_file(token, self.csv_file(self.csv_row("B1")), dry_run=False)
+        # same file again: nothing changes; changed opening hours of the same device (manufacturer + serial
+        # number): the record is updated, not duplicated
+        _status, body = self.import_file(token, self.csv_file(self.csv_row()), dry_run=False)
         self.assertEqual(body["data"]["attributes"]["summary"]["unchanged"], 1)
-        _status, body = self.import_file(token, self.csv_file(self.csv_row("B1", hours="Mo-Fr 08:00-16:00")), dry_run=False)
+        _status, body = self.import_file(token, self.csv_file(self.csv_row(hours="Mo-Fr 08:00-16:00")), dry_run=False)
         self.assertEqual(body["data"]["attributes"]["summary"]["update"], 1)
-        reports = self.request("GET", "/api/aed-reports", token=token)[1]["data"]
-        imported = [r for r in reports if r["attributes"]["source_id"] == "B1"]
+        imported = self.reports_named(token, "Basen miejski")
         self.assertEqual(len(imported), 1)
         self.assertEqual(imported[0]["attributes"]["opening_hours"], "Mo-Fr 08:00-16:00")
         self.assertEqual(imported[0]["attributes"]["status"], "submitted")
 
+    def test_device_of_another_institution_is_rejected(self):
+        # one device (manufacturer + serial number) cannot be reported in two places
+        self.import_file(self.login(PROVIDER_A), self.csv_file(self.csv_row()), dry_run=False)
+        token_b = self.login(PROVIDER_B)
+        _status, body = self.import_file(token_b, self.csv_file(self.csv_row(name="Szpital", lat="50.2")), dry_run=False)
+        attrs = body["data"]["attributes"]
+        self.assertEqual(attrs["status"], "rejected")
+        self.assertEqual(attrs["errors"][0]["field"], "serial_number")
+        self.assertIn("inną instytucję", attrs["errors"][0]["message"])
+        # another device at the same place is accepted and flagged as a possible duplicate
+        _status, body = self.import_file(token_b, self.csv_file(self.csv_row(serial="SN-OTHER")), dry_run=False)
+        summary = body["data"]["attributes"]["summary"]
+        self.assertEqual((summary["create"], summary["duplicates"]), (1, 1))
+
+    def test_form_rejects_a_device_of_another_institution(self):
+        # seeded example 3 belongs to institution B: HeartSine, serial DEMO-0003
+        status, body = self.create(self.login(PROVIDER_A), manufacturer="heartsine", serial_number="demo 0003")
+        self.assertEqual(status, 422)
+        self.assertEqual(body["errors"][0]["source"]["pointer"], "/data/attributes/serial_number")
+
+    def test_form_updates_the_own_device(self):
+        token = self.login(PROVIDER_A)
+        first = self.create(token)[1]["data"]
+        second = self.create(token, opening_hours="Mo-Fr 06:00-20:00")[1]["data"]
+        self.assertEqual(first["id"], second["id"])
+        self.assertEqual(second["attributes"]["opening_hours"], "Mo-Fr 06:00-20:00")
+
+    def test_serial_number_is_for_the_administrator_only(self):
+        _status, body = self.create(self.login(PROVIDER_A))
+        self.assertNotIn("serial_number", body["data"]["attributes"])
+        _status, body = self.request("GET", "/api/aed-reports", token=self.login(ADMIN))
+        self.assertIn("SN-FORM-0001", [item["attributes"]["serial_number"] for item in body["data"]])
+
     def test_file_with_errors_is_rejected_as_a_whole(self):
         token = self.login(PROVIDER_A)
         before = len(self.request("GET", "/api/aed-reports", token=token)[1]["data"])
-        content = self.csv_file(self.csv_row("B1"), self.csv_row("B2", name="Szkoła", postal="31004"))
+        content = self.csv_file(self.csv_row(), self.csv_row(name="Szkoła", lat="50.090000", postal="31004", serial="SN-2"))
         _status, body = self.import_file(token, content, dry_run=False)
         attrs = body["data"]["attributes"]
         self.assertEqual(attrs["status"], "rejected")
@@ -259,13 +324,13 @@ class DemoServerTest(unittest.TestCase):
     def test_duplicate_of_other_institution_is_flagged(self):
         # example record 3 (institution B): Dworzec Główny, 54.355600, 18.643400
         token = self.login(PROVIDER_A)
-        row = self.csv_row("D1", name="Dworzec Główny Gdańsk", lat="54.355630", lon="18.643420", postal="80-803")
+        row = self.csv_row(name="Dworzec Główny Gdańsk", lat="54.355630", lon="18.643420", postal="80-803", serial="SN-GD")
         _status, body = self.import_file(token, self.csv_file(row.replace("Kraków,Kraków", "Gdańsk,Gdańsk")), dry_run=False)
         action = body["data"]["attributes"]["actions"][0]
         self.assertIsNotNone(action["duplicate_of"])
         self.assertLessEqual(action["duplicate_distance_m"], 15)
         reports = self.request("GET", "/api/aed-reports", token=self.login(ADMIN))[1]["data"]
-        flagged = next(r for r in reports if r["attributes"]["source_id"] == "D1")
+        flagged = next(r for r in reports if r["attributes"]["location_name"] == "Dworzec Główny Gdańsk")
         self.assertIn("Dworzec", flagged["attributes"]["possible_duplicate"]["location_name"])
 
     def test_form_submission_is_checked_for_duplicates(self):
@@ -284,22 +349,25 @@ class DemoServerTest(unittest.TestCase):
     def test_export_formats(self):
         status, text = self.request("GET", "/api/aed-devices?format=csv")
         self.assertEqual(status, 200)
-        self.assertTrue(text.startswith("id,source_id,operator_name"))
+        self.assertTrue(text.startswith("id,operator_name,operator_regon"))
+        self.assertNotIn("internal_contact_phone", text.splitlines()[0])  # administrator only, never published
         self.assertEqual(len(text.strip().splitlines()), 3)
         _status, geojson = self.request("GET", "/api/aed-devices?format=geojson")
         self.assertEqual(geojson["type"], "FeatureCollection")
         self.assertEqual(len(geojson["features"]), 2)
         self.assertEqual(self.request("GET", "/api/aed-devices?format=pdf")[0], 400)
 
-    def test_export_can_be_imported_again(self):
+    def test_export_has_no_serial_numbers(self):
+        # serial numbers are for the administrator only: the published file cannot be re-imported as it is
         _status, text = self.request("GET", "/api/aed-devices?format=csv")
+        self.assertNotIn("serial_number", text.splitlines()[0])
         _status, body = self.import_file(self.login(PROVIDER_A), text)
-        self.assertEqual(body["data"]["attributes"]["errors"], [])
+        self.assertIn("serial_number", body["data"]["attributes"]["file_error"])
 
     def test_serves_schema_files(self):
         status, text = self.request("GET", "/schema/aed-template.csv")
         self.assertEqual(status, 200)
-        self.assertTrue(text.startswith("source_id,"))
+        self.assertTrue(text.startswith("location_name,"))
         self.assertEqual(self.request("GET", "/schema/../standalone/seed.py")[0], 404)
 
     # --- static & config ---

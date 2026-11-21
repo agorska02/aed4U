@@ -9,9 +9,13 @@ dane.gov.pl dane o defibrylatorach AED od wszystkich dysponentów w **jednym, je
 
 - **wzorcowy zakres danych** – [`schema/`](schema/README.md): Table Schema, słowniki, szablon CSV;
 - **dostawcy danych** (edytorzy instytucji) zgłaszają urządzenia przez podstronę
-  „Zgłoś dostępność urządzenia AED”, formularz jest generowany ze schematu;
-- dysponenci z własnym rejestrem **importują plik** CSV/JSON/GeoJSON – z podglądem błędów, aktualizacją
-  po `source_id` i wykrywaniem **duplikatów między źródłami** (15 m + podobna nazwa lub adres);
+  „Zgłoś dostępność urządzenia AED”, formularz jest generowany ze schematu; dysponent (nazwa, REGON) i kontakt
+  publiczny pochodzą zawsze z profilu instytucji w portalu, a telefon do osoby odpowiedzialnej za AED widzi
+  tylko administrator;
+- dysponenci z własnym rejestrem **importują plik** CSV/JSON/GeoJSON – z podglądem błędów; urządzenie
+  identyfikuje **producent (słownik) + numer seryjny**: to samo urządzenie tej instytucji jest **aktualizowane**,
+  a zgłoszone już przez inną instytucję – **odrzucane** (jedno urządzenie nie może być w dwóch miejscach);
+  urządzenia blisko siebie (15 m) są oznaczane jako **możliwe duplikaty**;
 - **administrator portalu** weryfikuje zgłoszenia i duplikaty, a zweryfikowane rekordy tworzą
   **jeden publiczny zbiór** (`GET /aed-devices?format=csv|json|geojson`) gotowy do dane.gov.pl;
 - **służby ratunkowe i każdy z nas** korzystają z publicznej **mapy z listą** (`mapa.html`): „dostępne teraz”
@@ -43,8 +47,10 @@ Konta demo: `dostawca@demo.local` / `Demo123!` (instytucja A), `dostawca2@demo.l
 1. Zaloguj się jako **dostawca A** na `index.html`, wyślij zgłoszenie (położenie możesz wskazać na mapie)
    – status *Przesłane do weryfikacji*.
 2. W sekcji **Import** pobierz „plik do pokazu z błędami” i sprawdź go – raport wskazuje wiersz, kolumnę
-   i błąd, nic nie jest zapisywane. Potem sprawdź „poprawny” plik: 2 nowe urządzenia, 1 aktualizacja
-   (ten sam `source_id`) i 1 możliwy duplikat urządzenia zgłoszonego przez instytucję B → **Importuj**.
+   i błąd (m.in. brak nazwy „innego producenta” i urządzenie, które ma już instytucja B), nic nie jest
+   zapisywane. Potem sprawdź „poprawny” plik: 1 aktualizacja (ten sam producent i numer seryjny co urządzenie
+   instytucji A – dłuższe godziny), 2 nowe urządzenia, w tym 1 możliwy duplikat (inne urządzenie w tym samym
+   miejscu co urządzenie instytucji B) → **Importuj**.
 3. Przejdź do **Weryfikacja (admin)** (`admin.html`), zaloguj się jako **admin**: filtr „Tylko możliwe
    duplikaty”, zatwierdź lub odrzuć z komentarzem; na dole pobierz zbiór CSV/JSON/GeoJSON.
 4. Wróć na `index.html` jako dostawca A – widać nowy status i komentarz.
@@ -129,13 +135,13 @@ Sprawdzone z: [Standardy otwartości danych](https://dane.gov.pl/pl/knowledgebas
 | Obieg szkic / weryfikacja, rozliczalność zmian | Przewodnik 4.1.11, 5.2.6 | `status`, `verified_by/at`, `created_by/modified_by` | ✅ |
 | Sanityzacja treści od użytkowników | konwencja repo | `SanitizedCharField` / `SanitizedTextField` | ✅ |
 | Dostępność cyfrowa (WCAG 2.2) | Przewodnik 14 | etykiety i podpowiedzi powiązane z polami, podsumowanie błędów z linkami do pól, `aria-invalid`, `autocomplete` (1.3.5), pola Tak/Nie jako `fieldset`, cele ≥ 24 px (2.5.8), focus, skip link, kontrast, `lang="pl"`; mapa ma równoważną listę tekstową, wynik filtrowania ogłaszany (`role="status"`), geolokalizacja tylko na żądanie, punkt na mapie wybieralny też klawiaturą („Użyj środka mapy”) lub przez wpisanie współrzędnych; układ bez przewijania w poziomie przy 320–390 px (1.4.10) | ✅ (pełny audyt w etapie 5) |
-| Adres w odrębnych polach, kody TERYT | Std. techniczny 3.2 | `street_type`/`street`/`street_number`/`postal_code`/`city`…, `teryt_terc`, `teryt_simc`, słowniki | ✅ (wybór z rejestru TERYT – TODO) |
+| Adres w odrębnych polach | Std. techniczny 3.2 | `voivodeship`/`county`/`commune`/`city`/`street_type`/`street`/`street_number`/`postal_code`, słowniki województw i rodzajów ulic | ✅ (kody TERYT świadomie pominięte – zbiór nie korzysta z rejestru TERYT) |
 | Współrzędne WGS84, pola liczbowe, kropka dziesiętna (wizualizacja na mapie) | Przewodnik 10, Std. techniczny 3 | `latitude`/`longitude` (`DecimalField`, 6 miejsc, zakres Polski) | ✅ |
 | Granularność – bez łączenia kilku danych w jednym polu | Std. techniczny 3 | adres, położenie, dostępność, urządzenie, kontakt w osobnych polach; godziny w składni OSM `opening_hours` | ✅ |
 | Telefon: 9 cyfr | Std. techniczny 3 | wzorzec `^[0-9]{9}$` | ✅ |
 | Minimalizacja danych osobowych | Przewodnik 15, Std. bezpieczeństwa | tylko kontakt instytucjonalny, bez kodów do szafek; opisy pól to przypominają | ✅ |
 | Publikacja jako zbiór w formatach czytelnych maszynowo | Std. techniczny 4–5 | `GET /aed-devices`: CSV (RFC 4180, UTF-8, `\r\n`), JSON, GeoJSON (WGS84); tylko rekordy zweryfikowane; „dane na dzień” w `meta`/`metadata` | ✅ (licencja i harmonogram aktualizacji – przy zakładaniu zbioru w portalu) |
-| Wiele źródeł w jednym zbiorze, wskazanie źródła | wyzwanie | import plików + formularz + API (`source`), `operator_name`, `source_id`, aktualizacja zamiast duplikatu, wykrywanie duplikatów między dysponentami | ✅ |
+| Wiele źródeł w jednym zbiorze, wskazanie źródła | wyzwanie | import plików + formularz + API (`source`), dysponent i REGON z profilu instytucji, jedno urządzenie = jeden rekord (producent ze słownika + numer seryjny): aktualizacja zamiast duplikatu, odrzucenie urządzenia innej instytucji, ostrzeżenie o urządzeniach blisko siebie | ✅ |
 | Tłumaczenie EN metadanych | Przewodnik 4.2, 5.3 | – | ⏳ poza szkieletem |
 
 ### Zakres danych
@@ -192,6 +198,11 @@ python tools/build_frontend_schema.py       # po każdej zmianie schema/aed.sche
 - Wykrywanie duplikatów porównuje każdy rekord ze wszystkimi (O(n²)) – wystarcza do kilkudziesięciu tysięcy
   urządzeń; przy większej skali indeks przestrzenny (PostGIS / Elasticsearch `geo_distance`, jak w portalu).
 - Eksport w portalu jest endpointem; docelowo pliki zasobów generowałoby cyklicznie zadanie Celery.
+- **Moduł portalu (`backend/aed`) nie ma jeszcze** reguły „dysponent i kontakt z profilu instytucji” ani pola
+  `internal_contact_phone`, a wciąż ma usunięte z zakresu pole `source_id` (demo: `standalone/`, `frontend/` jest
+  aktualne), ma też usunięte z zakresu kody TERYT (`teryt_terc`, `teryt_simc`), nie ma słownika producentów,
+  `manufacturer_other`, `serial_number` ani unikalności urządzenia – do dopisania przy integracji: kolumny w modelu i migracji, wypełnianie z `Organization` (`title`, `regon`, `tel`, `email`), ukrycie pola przed
+  edytorami w API i eksporcie, endpoint z profilem instytucji dla formularza.
 - Wygląd odwzorowuje styl portalu (kolory, układ, typografia) bez oficjalnych logotypów.
 
 ## Uwaga do kodu portalu (poza zakresem modułu)

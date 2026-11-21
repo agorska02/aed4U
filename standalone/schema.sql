@@ -5,7 +5,10 @@
 
 CREATE TABLE IF NOT EXISTS organizations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL
+    title TEXT NOT NULL,
+    regon VARCHAR(14) NOT NULL DEFAULT '',            -- institution profile (portal: Organization.regon/tel/email)
+    phone VARCHAR(9) NOT NULL DEFAULT '',
+    email VARCHAR(254) NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS users (
@@ -34,7 +37,6 @@ CREATE TABLE IF NOT EXISTS aed_aedreport (
     uuid CHAR(36) NOT NULL UNIQUE,                    -- published as `id` in the dataset
     organization_id INTEGER NOT NULL REFERENCES organizations (id) ON DELETE RESTRICT,
     source VARCHAR(10) NOT NULL DEFAULT 'form' CHECK (source IN ('form', 'import', 'api')),
-    source_id VARCHAR(100) NOT NULL DEFAULT '',
     -- operator
     operator_name VARCHAR(300) NOT NULL,
     operator_regon VARCHAR(14) NOT NULL DEFAULT '',
@@ -47,9 +49,7 @@ CREATE TABLE IF NOT EXISTS aed_aedreport (
     voivodeship VARCHAR(30) NOT NULL DEFAULT '',
     county VARCHAR(100) NOT NULL DEFAULT '',
     commune VARCHAR(100) NOT NULL,
-    teryt_terc VARCHAR(7) NOT NULL DEFAULT '',
     city VARCHAR(200) NOT NULL,
-    teryt_simc VARCHAR(7) NOT NULL DEFAULT '',
     street_type VARCHAR(10) NOT NULL DEFAULT '',
     street VARCHAR(200) NOT NULL DEFAULT '',
     street_number VARCHAR(20) NOT NULL,
@@ -64,14 +64,19 @@ CREATE TABLE IF NOT EXISTS aed_aedreport (
     -- device
     device_status VARCHAR(15) NOT NULL CHECK (device_status IN ('operational', 'out_of_service', 'removed')),
     pediatric VARCHAR(7) NOT NULL DEFAULT '' CHECK (pediatric IN ('', 'yes', 'no', 'unknown')),
-    manufacturer VARCHAR(100) NOT NULL DEFAULT '',
+    manufacturer VARCHAR(20) NOT NULL,                -- code from schema/dictionaries/manufacturers.csv
+    manufacturer_other VARCHAR(100) NOT NULL DEFAULT '', -- name when manufacturer = 'other'
     model VARCHAR(100) NOT NULL DEFAULT '',
+    serial_number VARCHAR(50) NOT NULL,               -- administrator only, never published
+    -- manufacturer + normalised serial number: one device cannot be reported in two places
+    device_key VARCHAR(160) NOT NULL UNIQUE,
     last_inspection_date TEXT,                        -- ISO 8601 dates (yyyy-mm-dd)
     electrodes_expiry_date TEXT,
     battery_expiry_date TEXT,
-    -- contact (institutional only)
+    -- contact: operator_* and contact_* always come from the institution profile
     contact_phone VARCHAR(9) NOT NULL DEFAULT '',
     contact_email VARCHAR(254) NOT NULL DEFAULT '',
+    internal_contact_phone VARCHAR(9) NOT NULL DEFAULT '',  -- administrator only, never published
     -- currency
     data_date TEXT NOT NULL,
     notes TEXT NOT NULL DEFAULT '',
@@ -92,4 +97,3 @@ CREATE TABLE IF NOT EXISTS aed_aedreport (
 
 CREATE INDEX IF NOT EXISTS aed_aedreport_organization_idx ON aed_aedreport (organization_id);
 CREATE INDEX IF NOT EXISTS aed_aedreport_status_idx ON aed_aedreport (status);
-CREATE INDEX IF NOT EXISTS aed_aedreport_source_id_idx ON aed_aedreport (organization_id, source_id);

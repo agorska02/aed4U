@@ -23,10 +23,10 @@ class SharedCasesTest(unittest.TestCase):
 
 
 class ValidatorTest(unittest.TestCase):
-    def test_all_example_rows_are_valid_including_system_fields(self):
+    def test_all_example_rows_are_valid_published_records(self):
         for row in example_rows():
             with self.subTest(row["id"]):
-                self.assertEqual(validate_record(row)[1], {})
+                self.assertEqual(validate_record(row, provider=False)[1], {})  # incl. system, without internal fields
 
     def test_values_are_converted(self):
         cleaned, _errors = validate_record(apply_changes({"floor": "-1"}))
@@ -36,9 +36,9 @@ class ValidatorTest(unittest.TestCase):
         self.assertEqual(cleaned["data_date"], datetime.date(2026, 11, 15))
 
     def test_optional_skips_required_check(self):
-        record = apply_changes({"operator_name": ""})
-        self.assertIn("operator_name", validate_record(record)[1])
-        self.assertEqual(validate_record(record, optional=("operator_name",))[1], {})
+        record = apply_changes({"location_name": ""})
+        self.assertIn("location_name", validate_record(record)[1])
+        self.assertEqual(validate_record(record, optional=("location_name",))[1], {})
 
     def test_enum_choices_have_polish_labels(self):
         self.assertIn(("public", "dostępny publicznie"), enum_choices("access"))

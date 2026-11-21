@@ -14,7 +14,14 @@ import math
 import re
 import unicodedata
 
-from .validation import field_names, fields, to_json_value, validate_record
+from .validation import (
+    field_names,
+    fields,
+    published_field_names,
+    record_field_names,
+    to_json_value,
+    validate_record,
+)
 
 MAX_ROWS = 5000
 MAX_CONTENT_LENGTH = 2_000_000  # characters
@@ -36,7 +43,11 @@ MESSAGES = {
     "json_shape": 'Oczekiwano listy obiektów, obiektu {{"data": [...]}} albo GeoJSON FeatureCollection.',
     "json_record": "Rekord musi być obiektem JSON.",
     "geojson_point": "Geometria musi być punktem (Point) ze współrzędnymi [długość, szerokość].",
-    "duplicate_source_id": "Identyfikator „{0}” występuje w pliku więcej niż raz (pierwszy raz: rekord {1}).",
+    "same_device": "Ten sam producent i numer seryjny co w rekordzie {0} – jedno urządzenie może wystąpić tylko raz.",
+    "device_elsewhere": (
+        "To urządzenie (producent i numer seryjny) jest już zgłoszone przez inną instytucję – "
+        "skontaktuj się z administratorem portalu."
+    ),
 }
 
 
@@ -138,9 +149,7 @@ def _check_columns(columns):
     unknown = sorted(columns - known)
     if unknown:
         raise ImportFileError(_message("unknown_columns", ", ".join(unknown)))
-    required = [
-        f["name"] for f in fields(provider_only=True) if f.get("constraints", {}).get("required") and f["name"] != "operator_name"
-    ]
+    required = [f["name"] for f in fields(provider_only=True) if f.get("constraints", {}).get("required")]
     missing = [name for name in required if name not in columns]
     if missing:
         raise ImportFileError(_message("missing_columns", ", ".join(missing)))
@@ -188,8 +197,26 @@ def _same_address(a, b):
     )
 
 
+def normalize_serial(serial):
+    """Serial number for comparisons: upper case, letters and digits only ("ab-123 4" == "AB1234")."""
+    return re.sub(r"[^A-Z0-9]", "", str(serial or "").upper())
+
+
+def device_key(record):
+    """Identity of a physical device: manufacturer + normalised serial number, e.g. "zoll|AB1234" or
+    "other:acme medical|AB1234". None if the record has no manufacturer or serial number.
+    """
+    manufacturer, serial = record.get("manufacturer"), normalize_serial(record.get("serial_number"))
+    if not manufacturer or not serial:
+        return None
+    if manufacturer == "other":
+        manufacturer = "other:" + _normalize_text(record.get("manufacturer_other"))
+    return "{0}|{1}".format(manufacturer, serial)
+
+
 def find_duplicate(values, candidates, exclude_id=None):
-    """Nearest candidate within DUPLICATE_RADIUS_M with a similar place name or the same address.
+    """Nearest candidate within DUPLICATE_RADIUS_M with a similar place name or the same address — a warning
+    for the administrator (e.g. the same AED reported with a mistyped serial number).
 
     `values` and each candidate are dicts with latitude, longitude, location_name, postal_code, street_number
     (candidates also "id"). Returns (candidate, distance in whole metres) or (None, None).
@@ -224,12 +251,15 @@ def normalize(value):
     return value
 
 
-def plan_import(rows, own_records, all_records, default_operator):
+def plan_import(rows, own_records, all_records, institution):
     """Validate parsed rows and decide what to do with each of them.
 
-    own_records: existing records of the importing institution (dicts with "id", "source_id" and schema
-    fields) — a row with the same non-empty source_id updates that record.
-    all_records: every existing record (any institution) — used to flag possible duplicates.
+    own_records: existing records of the importing institution (dicts with "id" and schema fields) — a row with
+    the same device (device_key: manufacturer + serial number) updates that record instead of creating a new one.
+    all_records: every existing record (any institution) — the same device of another institution is an error
+    (one device cannot be in two places); records nearby are flagged as possible duplicates.
+    institution: values of the x-from-institution fields (operator_name, operator_regon, contact_phone,
+    contact_email) from the importing institution's profile; they override anything in the file.
 
     Returns a dict:
       errors:  [{"row": n, "field": name, "message": text}, ...]  (empty = the file can be imported)
@@ -238,31 +268,34 @@ def plan_import(rows, own_records, all_records, default_operator):
                  "duplicate_distance_m": m | None}, ...]
       summary: counts of rows, valid, invalid, create, update, unchanged, duplicates
     """
-    by_source_id = {r["source_id"]: r for r in own_records if r.get("source_id")}
-    provider_fields = field_names(provider_only=True)
+    compared_fields = record_field_names()
     errors, actions = [], []
-    first_row_of_source_id = {}
+    own_ids = {r["id"] for r in own_records}
+    by_key = {device_key(r): r for r in list(all_records) + list(own_records) if device_key(r)}
+    row_of_key = {}
     invalid_rows = set()
     for number, record in rows:
-        values, row_errors = validate_record(record, optional=("operator_name",))
+        values, row_errors = validate_record(record)
         for field_name, message in row_errors.items():
             errors.append({"row": number, "field": field_name, "message": message})
             invalid_rows.add(number)
-        source_id = values.get("source_id")
-        if source_id:
-            if source_id in first_row_of_source_id:
-                message = _message("duplicate_source_id", source_id, first_row_of_source_id[source_id])
-                errors.append({"row": number, "field": "source_id", "message": message})
-                invalid_rows.add(number)
-            else:
-                first_row_of_source_id[source_id] = number
         if number in invalid_rows:
             continue
-        values["operator_name"] = values["operator_name"] or default_operator
-        existing = by_source_id.get(source_id) if source_id else None
+        values.update(institution)
+        key = device_key(values)
+        if key in row_of_key:
+            errors.append({"row": number, "field": "serial_number", "message": _message("same_device", row_of_key[key])})
+            invalid_rows.add(number)
+            continue
+        row_of_key[key] = number
+        existing = by_key.get(key)
+        if existing is not None and existing["id"] not in own_ids:
+            errors.append({"row": number, "field": "serial_number", "message": _message("device_elsewhere")})
+            invalid_rows.add(number)
+            continue
         if existing is None:
             action = "create"
-        elif any(normalize(values[name]) != normalize(existing.get(name)) for name in provider_fields):
+        elif any(normalize(values.get(name)) != normalize(existing.get(name)) for name in compared_fields):
             action = "update"
         else:
             action = "unchanged"
@@ -306,6 +339,8 @@ def export_record(record):
     """Stored record (schema fields + uuid, source, verified_at) -> row of the published dataset."""
     row = {}
     for field in fields():
+        if field.get("x-internal"):
+            continue  # for the portal administrator only
         name = field["name"]
         value = to_json_value(record.get("uuid") if name == "id" else record.get(name))
         if name == "id" and value is not None:
@@ -330,7 +365,7 @@ def _csv_value(name, value):
 
 def to_csv(rows):
     out = io.StringIO()
-    writer = csv.DictWriter(out, fieldnames=field_names(), lineterminator="\r\n")  # RFC 4180
+    writer = csv.DictWriter(out, fieldnames=published_field_names(), lineterminator="\r\n")  # RFC 4180
     writer.writeheader()
     for row in rows:
         writer.writerow({k: _csv_value(k, v) for k, v in row.items()})
