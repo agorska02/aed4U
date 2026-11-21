@@ -1,0 +1,4 @@
+code,name,description
+operational,sprawny,Urządzenie sprawne i dostępne.
+out_of_service,czasowo niedostępny,"Urządzenie czasowo niedostępne, np. serwis lub awaria."
+removed,wycofany,Urządzenie wycofane z użytku lub przeniesione.

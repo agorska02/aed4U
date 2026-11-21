@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Weryfikacja zgłoszeń AED – prototyp</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="config.js"></script>
+  <script src="aed-schema.js" defer></script>
+  <script src="aed-validator.js" defer></script>
+  <script src="aed-import.js" defer></script>
+  <script src="api-mock.js" defer></script>
+  <script src="app.js" defer></script>
+  <script src="admin.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Przejdź do treści</a>
+
+  <div class="prototype-banner" role="note">
+    Prototyp – wersja testowa przygotowana na hackathon. Nie jest częścią serwisu produkcyjnego.
+    <span id="demo-banner" hidden>
+      <strong>Tryb demo</strong> – <span id="demo-mode"></span>.
+      <button type="button" class="btn btn--small" id="demo-reset" hidden>Przywróć dane demo</button>
+    </span>
+  </div>
+
+  <header class="site-header site-header--admin">
+    <div class="container site-header__inner">
+      <a class="site-header__brand" href="mapa.html">
+        <span class="site-header__logo" aria-hidden="true"></span>
+        <span>Panel Administratora <small>(prototyp)</small></span>
+      </a>
+      <nav aria-label="Menu główne">
+        <ul class="site-nav">
+          <li><a href="mapa.html">Mapa AED</a></li>
+          <li><a href="index.html">Zgłoś AED</a></li>
+          <li><a href="admin.html" aria-current="page">Weryfikacja (admin)</a></li>
+        </ul>
+      </nav>
+      <div class="site-header__user" id="user-bar" hidden>
+        <span id="user-email"></span>
+        <button type="button" class="btn btn--link" id="logout-btn">Wyloguj</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="container">
+    <nav aria-label="Ścieżka nawigacji">
+      <ol class="breadcrumbs">
+        <li><a href="index.html">Zgłoś dostępność urządzenia AED</a></li>
+        <li aria-current="page">Weryfikacja zgłoszeń</li>
+      </ol>
+    </nav>
+
+    <h1>Weryfikacja zgłoszeń AED</h1>
+    <p class="lead">Przeglądaj zgłoszenia dostawców danych, zatwierdzaj je lub odrzucaj z komentarzem.</p>
+
+    <div id="global-status" class="alert" role="status" aria-live="polite" hidden></div>
+
+    <!-- Portal mode: verification lives in the portal's Administration Panel (Django admin). -->
+    <section class="card" id="portal-notice" hidden>
+      <h2>Weryfikacja w Panelu Administratora</h2>
+      <p>
+        W portalu zgłoszenia weryfikuje się w Panelu Administratora:
+        <a id="portal-admin-link" href="#">Zgłoszenia AED</a>
+        (akcje „Mark as verified” / „Mark as rejected”, komentarz w formularzu zgłoszenia).
+      </p>
+    </section>
+
+    <section class="card" id="login-section" aria-labelledby="login-heading">
+      <h2 id="login-heading">Zaloguj się jako administrator</h2>
+      <div class="demo-accounts" id="demo-accounts" hidden>
+        <p><strong>Konto demo:</strong> <code>admin@demo.local</code> / <code>Admin123!</code></p>
+      </div>
+      <form id="login-form" novalidate>
+        <div class="field">
+          <label for="email">Adres e-mail</label>
+          <input id="email" name="email" type="email" autocomplete="username" required aria-describedby="email-error">
+          <p id="email-error" class="field__error" hidden></p>
+        </div>
+        <div class="field">
+          <label for="password">Hasło</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required
+                 aria-describedby="password-error">
+          <p id="password-error" class="field__error" hidden></p>
+        </div>
+        <button type="submit" class="btn btn--primary">Zaloguj</button>
+      </form>
+    </section>
+
+    <div id="app-section" hidden>
+      <section class="card card--wide" aria-labelledby="reports-heading">
+        <div class="toolbar">
+          <h2 id="reports-heading">Zgłoszenia</h2>
+          <div class="field field--inline">
+            <label for="status-filter">Status</label>
+            <select id="status-filter">
+              <option value="submitted">Przesłane do weryfikacji</option>
+              <option value="">Wszystkie</option>
+              <option value="verified">Zweryfikowane</option>
+              <option value="rejected">Odrzucone</option>
+            </select>
+          </div>
+          <div class="field field--inline">
+            <label for="source-filter">Źródło</label>
+            <select id="source-filter">
+              <option value="">Wszystkie</option>
+              <option value="form">Formularz</option>
+              <option value="import">Import pliku</option>
+              <option value="api">Integracja (API)</option>
+            </select>
+          </div>
+          <div class="field field--inline">
+            <input type="checkbox" id="duplicate-filter">
+            <label for="duplicate-filter">Tylko możliwe duplikaty</label>
+          </div>
+        </div>
+        <p id="reports-empty" class="hint" hidden>Brak zgłoszeń spełniających wybrane kryteria.</p>
+        <div class="table-wrap">
+          <table class="table" id="reports-table" hidden>
+            <caption class="sr-only">Zgłoszenia AED do weryfikacji</caption>
+            <thead>
+              <tr>
+                <th scope="col">Miejsce</th>
+                <th scope="col">Instytucja i źródło</th>
+                <th scope="col">Dane na dzień</th>
+                <th scope="col">Status</th>
+                <th scope="col">Weryfikacja</th>
+              </tr>
+            </thead>
+            <tbody id="reports-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="export-heading">
+        <h2 id="export-heading">Zbiór danych do publikacji</h2>
+        <p>
+          Ujednolicony zbiór ze wszystkich źródeł – tylko <strong>zweryfikowane</strong> rekordy, kolumny zgodne
+          z wzorcowym zakresem danych. Gotowy do dodania jako zasób w portalu dane.gov.pl.
+        </p>
+        <ul class="download-list">
+          <li><button type="button" class="btn btn--small btn--secondary" data-export="csv">Pobierz CSV</button> – RFC 4180, UTF-8</li>
+          <li><button type="button" class="btn btn--small btn--secondary" data-export="json">Pobierz JSON</button></li>
+          <li><button type="button" class="btn btn--small btn--secondary" data-export="geojson">Pobierz GeoJSON</button> – do map (WGS84)</li>
+        </ul>
+        <p class="hint">Publiczne API: <code>GET /aed-devices?format=csv|json|geojson</code> (bez logowania).</p>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>Prototyp podstrony w architekturze portalu otwartych danych (mcod). Dane testowe.</p>
+    </div>
+  </footer>
+</body>
+</html>

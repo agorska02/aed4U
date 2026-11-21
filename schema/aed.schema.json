@@ -1,0 +1,524 @@
+{
+  "$comment": "Reference data scope for AED defibrillators on dane.gov.pl (campaign \"Puls na mapie\"). Frictionless Table Schema v1. Custom keys: x-system = filled by the system, not by the data provider (omit in imports); x-group = form section (see x-groups); x-enumLabels = Polish labels of enum codes (same as dictionaries/*.csv); x-osm = matching OpenStreetMap tag (emergency=defibrillator).",
+  "name": "aed-defibrillators",
+  "title": "Defibrylatory AED – wzorcowy zakres danych",
+  "description": "Jednolity zakres danych o automatycznych defibrylatorach zewnętrznych (AED) udostępnianych w portalu dane.gov.pl. Jeden wiersz = jedno urządzenie. Kodowanie UTF-8, separator pól: przecinek, separator dziesiętny: kropka, daty w ISO 8601, współrzędne w WGS84 (EPSG:4326).",
+  "version": "0.1.0",
+  "created": "2026-11-21",
+  "missingValues": [
+    ""
+  ],
+  "primaryKey": "id",
+  "x-groups": [
+    {
+      "name": "operator",
+      "title": "Dysponent urządzenia",
+      "description": "Kto odpowiada za urządzenie."
+    },
+    {
+      "name": "place",
+      "title": "Miejsce",
+      "description": "Gdzie w obiekcie znajduje się urządzenie."
+    },
+    {
+      "name": "address",
+      "title": "Adres",
+      "description": "Adres obiektu w osobnych polach, zgodnie z TERYT."
+    },
+    {
+      "name": "position",
+      "title": "Położenie",
+      "description": "Współrzędne geograficzne w układzie WGS84, np. odczytane z mapy."
+    },
+    {
+      "name": "access",
+      "title": "Dostępność",
+      "description": "Kto i kiedy może skorzystać z urządzenia."
+    },
+    {
+      "name": "device",
+      "title": "Urządzenie",
+      "description": "Stan i parametry urządzenia."
+    },
+    {
+      "name": "contact",
+      "title": "Kontakt instytucjonalny",
+      "description": "Tylko dane kontaktowe instytucji – bez danych osobowych."
+    },
+    {
+      "name": "meta",
+      "title": "Aktualność danych"
+    }
+  ],
+  "fields": [
+    {
+      "name": "id",
+      "title": "Identyfikator rekordu",
+      "description": "Unikalny identyfikator UUID nadawany przez system przy przyjęciu rekordu. Nie zmienia się przy aktualizacjach.",
+      "type": "string",
+      "format": "uuid",
+      "constraints": {
+        "required": true,
+        "unique": true
+      },
+      "x-system": true
+    },
+    {
+      "name": "source_id",
+      "title": "Identyfikator u dysponenta",
+      "description": "Identyfikator urządzenia w systemie dysponenta (np. numer inwentarzowy). Pozwala dopasować rekord przy kolejnym imporcie.",
+      "type": "string",
+      "constraints": {
+        "maxLength": 100
+      },
+      "x-osm": "ref",
+      "x-group": "operator"
+    },
+    {
+      "name": "operator_name",
+      "title": "Dysponent",
+      "description": "Nazwa instytucji lub podmiotu, który odpowiada za urządzenie (właściciel lub zarządca).",
+      "type": "string",
+      "constraints": {
+        "required": true,
+        "minLength": 2,
+        "maxLength": 300
+      },
+      "x-osm": "operator",
+      "x-group": "operator"
+    },
+    {
+      "name": "operator_regon",
+      "title": "REGON dysponenta",
+      "description": "Numer REGON dysponenta: 9 lub 14 cyfr, bez spacji i myślników.",
+      "type": "string",
+      "constraints": {
+        "pattern": "^([0-9]{9}|[0-9]{14})$"
+      },
+      "x-group": "operator"
+    },
+    {
+      "name": "source",
+      "title": "Kanał pozyskania",
+      "description": "Sposób, w jaki rekord trafił do zbioru: form – formularz na portalu, import – plik od dysponenta, api – integracja systemowa.",
+      "type": "string",
+      "constraints": {
+        "required": true,
+        "enum": [
+          "form",
+          "import",
+          "api"
+        ]
+      },
+      "x-system": true
+    },
+    {
+      "name": "location_name",
+      "title": "Nazwa miejsca",
+      "description": "Nazwa obiektu, w którym znajduje się urządzenie, np. „Urząd Gminy Wiśniowa”, „Dworzec PKP Kielce”.",
+      "type": "string",
+      "constraints": {
+        "required": true,
+        "minLength": 2,
+        "maxLength": 300
+      },
+      "x-osm": "name",
+      "x-group": "place"
+    },
+    {
+      "name": "location_description",
+      "title": "Dokładne miejsce",
+      "description": "Gdzie dokładnie szukać urządzenia, np. „hol główny, przy recepcji”, „ściana zewnętrzna od strony parkingu”.",
+      "type": "string",
+      "constraints": {
+        "required": true,
+        "minLength": 3,
+        "maxLength": 300
+      },
+      "x-osm": "defibrillator:location",
+      "x-group": "place"
+    },
+    {
+      "name": "indoor",
+      "title": "Wewnątrz budynku",
+      "description": "true – urządzenie wewnątrz budynku, false – na zewnątrz (np. w szafce na elewacji).",
+      "type": "boolean",
+      "trueValues": [
+        "true"
+      ],
+      "falseValues": [
+        "false"
+      ],
+      "constraints": {
+        "required": true
+      },
+      "x-osm": "indoor",
+      "x-group": "place"
+    },
+    {
+      "name": "floor",
+      "title": "Kondygnacja",
+      "description": "Numer kondygnacji: 0 – parter, liczby ujemne – piętra podziemne.",
+      "type": "integer",
+      "constraints": {
+        "minimum": -10,
+        "maximum": 100
+      },
+      "x-osm": "level",
+      "x-group": "place"
+    },
+    {
+      "name": "voivodeship",
+      "title": "Województwo",
+      "description": "Nazwa województwa małymi literami, zgodnie ze słownikiem dictionaries/voivodeships.csv (TERYT TERC).",
+      "type": "string",
+      "constraints": {
+        "enum": [
+          "dolnośląskie",
+          "kujawsko-pomorskie",
+          "lubelskie",
+          "lubuskie",
+          "łódzkie",
+          "małopolskie",
+          "mazowieckie",
+          "opolskie",
+          "podkarpackie",
+          "podlaskie",
+          "pomorskie",
+          "śląskie",
+          "świętokrzyskie",
+          "warmińsko-mazurskie",
+          "wielkopolskie",
+          "zachodniopomorskie"
+        ]
+      },
+      "x-group": "address"
+    },
+    {
+      "name": "county",
+      "title": "Powiat",
+      "description": "Nazwa powiatu według TERYT, np. „krakowski”, „m. Kraków”.",
+      "type": "string",
+      "constraints": {
+        "maxLength": 100
+      },
+      "x-group": "address"
+    },
+    {
+      "name": "commune",
+      "title": "Gmina",
+      "description": "Nazwa gminy według TERYT.",
+      "type": "string",
+      "constraints": {
+        "required": true,
+        "minLength": 2,
+        "maxLength": 100
+      },
+      "x-group": "address"
+    },
+    {
+      "name": "teryt_terc",
+      "title": "Kod TERYT gminy (TERC)",
+      "description": "Siedmiocyfrowy identyfikator gminy z rejestru TERC (województwo, powiat, gmina, rodzaj gminy), np. 1261011.",
+      "type": "string",
+      "constraints": {
+        "pattern": "^[0-9]{7}$"
+      },
+      "x-group": "address"
+    },
+    {
+      "name": "city",
+      "title": "Miejscowość",
+      "description": "Nazwa miejscowości według TERYT SIMC.",
+      "type": "string",
+      "constraints": {
+        "required": true,
+        "minLength": 2,
+        "maxLength": 200
+      },
+      "x-osm": "addr:city",
+      "x-group": "address"
+    },
+    {
+      "name": "teryt_simc",
+      "title": "Kod TERYT miejscowości (SIMC)",
+      "description": "Siedmiocyfrowy identyfikator miejscowości z rejestru SIMC, np. 0950463.",
+      "type": "string",
+      "constraints": {
+        "pattern": "^[0-9]{7}$"
+      },
+      "x-group": "address"
+    },
+    {
+      "name": "street_type",
+      "title": "Rodzaj ulicy",
+      "description": "Cecha ulicy według TERYT ULIC, zgodnie ze słownikiem dictionaries/street_types.csv. Puste, gdy miejscowość nie ma ulic.",
+      "type": "string",
+      "constraints": {
+        "enum": [
+          "ul.",
+          "al.",
+          "pl.",
+          "skwer",
+          "rondo",
+          "park",
+          "rynek",
+          "os.",
+          "bulw.",
+          "wyb.",
+          "inne"
+        ]
+      },
+      "x-enumLabels": {
+        "ul.": "ulica",
+        "al.": "aleja",
+        "pl.": "plac",
+        "skwer": "skwer",
+        "rondo": "rondo",
+        "park": "park",
+        "rynek": "rynek",
+        "os.": "osiedle",
+        "bulw.": "bulwar",
+        "wyb.": "wybrzeże",
+        "inne": "inne"
+      },
+      "x-group": "address"
+    },
+    {
+      "name": "street",
+      "title": "Ulica",
+      "description": "Nazwa ulicy bez rodzaju (np. „Długa”, nie „ul. Długa”). Puste, gdy miejscowość nie ma ulic.",
+      "type": "string",
+      "constraints": {
+        "maxLength": 200
+      },
+      "x-osm": "addr:street",
+      "x-group": "address"
+    },
+    {
+      "name": "street_number",
+      "title": "Numer budynku",
+      "description": "Numer porządkowy budynku, np. „12”, „12A”, „7/9”.",
+      "type": "string",
+      "constraints": {
+        "required": true,
+        "maxLength": 20
+      },
+      "x-osm": "addr:housenumber",
+      "x-group": "address"
+    },
+    {
+      "name": "postal_code",
+      "title": "Kod pocztowy",
+      "description": "Kod pocztowy w formacie NN-NNN.",
+      "type": "string",
+      "constraints": {
+        "required": true,
+        "pattern": "^[0-9]{2}-[0-9]{3}$"
+      },
+      "x-osm": "addr:postcode",
+      "x-group": "address"
+    },
+    {
+      "name": "latitude",
+      "title": "Szerokość geograficzna",
+      "description": "Szerokość geograficzna w stopniach dziesiętnych WGS84 (EPSG:4326), kropka jako separator, do 6 miejsc po przecinku (dokładność ok. 0,1 m), np. 50.061389.",
+      "type": "number",
+      "decimalChar": ".",
+      "constraints": {
+        "required": true,
+        "minimum": 49.0,
+        "maximum": 54.9
+      },
+      "x-group": "position"
+    },
+    {
+      "name": "longitude",
+      "title": "Długość geograficzna",
+      "description": "Długość geograficzna w stopniach dziesiętnych WGS84 (EPSG:4326), kropka jako separator, do 6 miejsc po przecinku, np. 19.938333.",
+      "type": "number",
+      "decimalChar": ".",
+      "constraints": {
+        "required": true,
+        "minimum": 14.1,
+        "maximum": 24.2
+      },
+      "x-group": "position"
+    },
+    {
+      "name": "access",
+      "title": "Dostępność",
+      "description": "Kto może skorzystać z urządzenia: public – każdy, bez ograniczeń; customers – osoby przebywające w obiekcie w godzinach jego otwarcia; private – tylko personel. Słownik: dictionaries/access.csv.",
+      "type": "string",
+      "constraints": {
+        "required": true,
+        "enum": [
+          "public",
+          "customers",
+          "private"
+        ]
+      },
+      "x-osm": "access",
+      "x-enumLabels": {
+        "public": "dostępny publicznie",
+        "customers": "dostępny w godzinach otwarcia obiektu",
+        "private": "dostępny tylko dla personelu"
+      },
+      "x-group": "access"
+    },
+    {
+      "name": "opening_hours",
+      "title": "Godziny dostępności",
+      "description": "Kiedy urządzenie jest dostępne, w składni opening_hours z OpenStreetMap, np. „24/7”, „Mo-Fr 08:00-16:00”, „Mo-Fr 07:30-15:30; Sa 09:00-13:00”.",
+      "type": "string",
+      "constraints": {
+        "required": true,
+        "maxLength": 255
+      },
+      "x-osm": "opening_hours",
+      "x-group": "access"
+    },
+    {
+      "name": "access_notes",
+      "title": "Uwagi o dostępie",
+      "description": "Dodatkowe informacje o dostępie, np. „klucz u ochrony budynku”. Nie podawaj kodów do szafek ani danych osobowych.",
+      "type": "string",
+      "constraints": {
+        "maxLength": 500
+      },
+      "x-osm": "description",
+      "x-group": "access"
+    },
+    {
+      "name": "device_status",
+      "title": "Stan urządzenia",
+      "description": "operational – sprawne i dostępne; out_of_service – czasowo niedostępne (serwis, awaria); removed – wycofane. Słownik: dictionaries/device_status.csv.",
+      "type": "string",
+      "constraints": {
+        "required": true,
+        "enum": [
+          "operational",
+          "out_of_service",
+          "removed"
+        ]
+      },
+      "x-enumLabels": {
+        "operational": "sprawny",
+        "out_of_service": "czasowo niedostępny",
+        "removed": "wycofany"
+      },
+      "x-group": "device"
+    },
+    {
+      "name": "pediatric",
+      "title": "Tryb pediatryczny",
+      "description": "Czy urządzenie ma elektrody lub tryb dla dzieci: yes, no, unknown. Słownik: dictionaries/pediatric.csv.",
+      "type": "string",
+      "constraints": {
+        "enum": [
+          "yes",
+          "no",
+          "unknown"
+        ]
+      },
+      "x-enumLabels": {
+        "yes": "tak – ma elektrody lub tryb pediatryczny",
+        "no": "nie",
+        "unknown": "brak informacji"
+      },
+      "x-group": "device"
+    },
+    {
+      "name": "manufacturer",
+      "title": "Producent",
+      "type": "string",
+      "constraints": {
+        "maxLength": 100
+      },
+      "x-osm": "manufacturer",
+      "x-group": "device"
+    },
+    {
+      "name": "model",
+      "title": "Model",
+      "type": "string",
+      "constraints": {
+        "maxLength": 100
+      },
+      "x-osm": "model",
+      "x-group": "device"
+    },
+    {
+      "name": "last_inspection_date",
+      "title": "Data ostatniego przeglądu",
+      "description": "Data w formacie RRRR-MM-DD.",
+      "type": "date",
+      "x-group": "device"
+    },
+    {
+      "name": "electrodes_expiry_date",
+      "title": "Termin ważności elektrod",
+      "description": "Data w formacie RRRR-MM-DD.",
+      "type": "date",
+      "x-group": "device"
+    },
+    {
+      "name": "battery_expiry_date",
+      "title": "Termin ważności baterii",
+      "description": "Data w formacie RRRR-MM-DD.",
+      "type": "date",
+      "x-group": "device"
+    },
+    {
+      "name": "contact_phone",
+      "title": "Telefon kontaktowy",
+      "description": "Instytucjonalny numer telefonu: 9 cyfr, bez spacji i prefiksu +48. Nie podawaj prywatnych numerów.",
+      "type": "string",
+      "constraints": {
+        "pattern": "^[0-9]{9}$"
+      },
+      "x-osm": "phone",
+      "x-group": "contact"
+    },
+    {
+      "name": "contact_email",
+      "title": "E-mail kontaktowy",
+      "description": "Instytucjonalny adres e-mail (np. sekretariat@…). Nie podawaj prywatnych adresów.",
+      "type": "string",
+      "format": "email",
+      "constraints": {
+        "maxLength": 254
+      },
+      "x-osm": "email",
+      "x-group": "contact"
+    },
+    {
+      "name": "data_date",
+      "title": "Dane na dzień",
+      "description": "Dzień, w którym dysponent potwierdził aktualność danych, w formacie RRRR-MM-DD.",
+      "type": "date",
+      "constraints": {
+        "required": true
+      },
+      "x-osm": "check_date",
+      "x-group": "meta"
+    },
+    {
+      "name": "verified_at",
+      "title": "Data weryfikacji",
+      "description": "Data i czas weryfikacji rekordu przez administratora zbioru, ISO 8601 z czasem UTC, np. 2026-11-21T10:15:00Z.",
+      "type": "datetime",
+      "x-system": true
+    },
+    {
+      "name": "notes",
+      "title": "Uwagi",
+      "type": "string",
+      "constraints": {
+        "maxLength": 3000
+      },
+      "x-osm": "note",
+      "x-group": "meta"
+    }
+  ]
+}

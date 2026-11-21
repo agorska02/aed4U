@@ -1,0 +1,31 @@
+# PostgreSQL for the standalone AED demo (optional — the demo also runs on SQLite without any setup).
+#
+#   docker compose -f standalone/docker-compose.yml up -d
+#   python standalone/server.py --db postgresql://aed:aed@127.0.0.1:5433/aed_demo
+#
+# Demo credentials only; the port is bound to localhost. Data survive restarts in the `aed-pgdata` volume
+# (`docker compose -f standalone/docker-compose.yml down -v` removes them).
+name: aed-demo
+
+services:
+  aed-postgres:
+    image: postgres:16-alpine
+    container_name: aed-postgres
+    environment:
+      POSTGRES_USER: aed
+      POSTGRES_PASSWORD: aed
+      POSTGRES_DB: aed_demo
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - aed-pgdata:/var/lib/postgresql/data
+      # second database for the automated tests (AED_TEST_DATABASE_URL)
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/10-aed-test.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aed -d aed_demo"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  aed-pgdata:

@@ -1,0 +1,423 @@
+{
+ "$comment": "Shared cases for backend/aed/importing.py and frontend/aed-import.js: parse_file(content, format) + plan_import(rows, own, all or own, 'Instytucja testowa'). actions: [row, action, duplicate_of, duplicate_of_row].",
+ "cases": [
+  {
+   "name": "valid CSV creates records",
+   "format": "csv",
+   "content": "source_id,location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,data_date\nA1,Hala sportowa,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,2026-11-20\nA2,Szkoła,przy wejściu,true,Kraków,Kraków,5,31-004,50.070000,19.937000,public,24/7,operational,2026-11-20\n",
+   "expect": {
+    "summary": {
+     "rows": 2,
+     "valid": 2,
+     "create": 2,
+     "duplicates": 0
+    },
+    "actions": [
+     [
+      2,
+      "create",
+      null,
+      null
+     ],
+     [
+      3,
+      "create",
+      null,
+      null
+     ]
+    ]
+   }
+  },
+  {
+   "name": "semicolon CSV and BOM",
+   "format": "csv",
+   "content": "﻿source_id;location_name;location_description;indoor;commune;city;street_number;postal_code;latitude;longitude;access;opening_hours;device_status;data_date\r\nA1;Hala sportowa;przy wejściu;true;Kraków;Kraków;5;31-004;50.061000;19.937000;public;24/7;operational;2026-11-20\r\n",
+   "expect": {
+    "summary": {
+     "rows": 1,
+     "create": 1
+    }
+   }
+  },
+  {
+   "name": "row errors with line numbers",
+   "format": "csv",
+   "content": "source_id,location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,data_date\nA1,Hala sportowa,przy wejściu,true,Kraków,Kraków,5,31004,50.061000,19.937000,public,24/7,operational,2026-11-20\nA2,Szkoła,przy wejściu,true,Kraków,,5,31-004,50.07,19.937000,public,24/7,operational,2026-11-20\nA3,Basen,przy wejściu,true,Kraków,Kraków,5,31-004,50.08,19.937000,public,24/7,operational,2026-11-20\n",
+   "expect": {
+    "errors": [
+     [
+      2,
+      "postal_code"
+     ],
+     [
+      3,
+      "city"
+     ]
+    ],
+    "summary": {
+     "rows": 3,
+     "invalid": 2,
+     "valid": 1,
+     "create": 1
+    }
+   }
+  },
+  {
+   "name": "quoted value with comma and newline",
+   "format": "csv",
+   "content": "source_id,location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,data_date\nA1,\"Hala, sportowa\",\"przy wejściu,\nod parkingu\",true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,2026-11-20\nA2,Basen,przy wejściu,true,Kraków,Kraków,5,x,50.061000,19.937000,public,24/7,operational,2026-11-20\n",
+   "expect": {
+    "errors": [
+     [
+      4,
+      "postal_code"
+     ]
+    ],
+    "summary": {
+     "rows": 2,
+     "create": 1
+    }
+   }
+  },
+  {
+   "name": "unknown column rejects the file",
+   "format": "csv",
+   "content": "source_id,location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,data_date,kod_szafki\nA1,Hala sportowa,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,2026-11-20,1234\n",
+   "expect": {
+    "file_error": true
+   }
+  },
+  {
+   "name": "missing required column rejects the file",
+   "format": "csv",
+   "content": "source_id,location_name\nA1,Hala\n",
+   "expect": {
+    "file_error": true
+   }
+  },
+  {
+   "name": "too many values in a row",
+   "format": "csv",
+   "content": "source_id,location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,data_date\nA1,Hala sportowa,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,2026-11-20,x\n",
+   "expect": {
+    "file_error": true
+   }
+  },
+  {
+   "name": "empty file",
+   "format": "csv",
+   "content": "source_id,location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,data_date\n",
+   "expect": {
+    "file_error": true
+   }
+  },
+  {
+   "name": "duplicate source_id in the file",
+   "format": "csv",
+   "content": "source_id,location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,data_date\nA1,Hala sportowa,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,2026-11-20\nA1,Szkoła,przy wejściu,true,Kraków,Kraków,5,31-004,50.07,19.937000,public,24/7,operational,2026-11-20\n",
+   "expect": {
+    "errors": [
+     [
+      3,
+      "source_id"
+     ]
+    ],
+    "summary": {
+     "invalid": 1,
+     "create": 1
+    }
+   }
+  },
+  {
+   "name": "same source_id updates or keeps own records",
+   "format": "csv",
+   "content": "source_id,location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,data_date\nA1,Hala sportowa,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,2026-11-20\nA2,Szkoła,przy wejściu,true,Kraków,Kraków,5,31-004,50.070000,19.937000,public,Mo-Fr 08:00-16:00,operational,2026-11-20\n",
+   "own": [
+    {
+     "id": 10,
+     "source_id": "A1",
+     "operator_name": "Instytucja testowa",
+     "location_name": "Hala sportowa",
+     "location_description": "przy wejściu",
+     "indoor": true,
+     "commune": "Kraków",
+     "city": "Kraków",
+     "street_number": "5",
+     "postal_code": "31-004",
+     "latitude": 50.061,
+     "longitude": 19.937,
+     "access": "public",
+     "opening_hours": "24/7",
+     "device_status": "operational",
+     "data_date": "2026-11-20"
+    },
+    {
+     "id": 11,
+     "source_id": "A2",
+     "operator_name": "Instytucja testowa",
+     "location_name": "Szkoła",
+     "location_description": "przy wejściu",
+     "indoor": true,
+     "commune": "Kraków",
+     "city": "Kraków",
+     "street_number": "5",
+     "postal_code": "31-004",
+     "latitude": 50.07,
+     "longitude": 19.937,
+     "access": "public",
+     "opening_hours": "24/7",
+     "device_status": "operational",
+     "data_date": "2026-11-20"
+    }
+   ],
+   "expect": {
+    "summary": {
+     "unchanged": 1,
+     "update": 1,
+     "create": 0,
+     "duplicates": 0
+    },
+    "actions": [
+     [
+      2,
+      "unchanged",
+      null,
+      null
+     ],
+     [
+      3,
+      "update",
+      null,
+      null
+     ]
+    ]
+   }
+  },
+  {
+   "name": "near record of another institution with similar name is a duplicate",
+   "format": "csv",
+   "content": "source_id,location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,data_date\nA1,Hala sportowa MOSiR,przy wejściu,true,Kraków,Kraków,5,31-004,50.061040,19.937000,public,24/7,operational,2026-11-20\n",
+   "all": [
+    {
+     "id": 99,
+     "source_id": "X",
+     "operator_name": "Instytucja testowa",
+     "location_name": "Hala Sportowa",
+     "location_description": "przy wejściu",
+     "indoor": true,
+     "commune": "Kraków",
+     "city": "Kraków",
+     "street_number": "5",
+     "postal_code": "31-004",
+     "latitude": 50.061,
+     "longitude": 19.937,
+     "access": "public",
+     "opening_hours": "24/7",
+     "device_status": "operational",
+     "data_date": "2026-11-20"
+    }
+   ],
+   "expect": {
+    "summary": {
+     "create": 1,
+     "duplicates": 1
+    },
+    "actions": [
+     [
+      2,
+      "create",
+      99,
+      null
+     ]
+    ]
+   }
+  },
+  {
+   "name": "similar name 100 m away is not a duplicate",
+   "format": "csv",
+   "content": "source_id,location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,data_date\nA1,Hala sportowa,przy wejściu,true,Kraków,Kraków,5,31-004,50.061900,19.937000,public,24/7,operational,2026-11-20\n",
+   "all": [
+    {
+     "id": 99,
+     "source_id": "X",
+     "operator_name": "Instytucja testowa",
+     "location_name": "Hala sportowa",
+     "location_description": "przy wejściu",
+     "indoor": true,
+     "commune": "Kraków",
+     "city": "Kraków",
+     "street_number": "5",
+     "postal_code": "31-004",
+     "latitude": 50.061,
+     "longitude": 19.937,
+     "access": "public",
+     "opening_hours": "24/7",
+     "device_status": "operational",
+     "data_date": "2026-11-20"
+    }
+   ],
+   "expect": {
+    "summary": {
+     "duplicates": 0
+    },
+    "actions": [
+     [
+      2,
+      "create",
+      null,
+      null
+     ]
+    ]
+   }
+  },
+  {
+   "name": "same address with a different name is a duplicate",
+   "format": "csv",
+   "content": "source_id,location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,data_date\nA1,Urząd Gminy,przy wejściu,true,Kraków,Kraków,5,31-004,50.061050,19.937000,public,24/7,operational,2026-11-20\n",
+   "all": [
+    {
+     "id": 99,
+     "source_id": "X",
+     "operator_name": "Instytucja testowa",
+     "location_name": "Biblioteka",
+     "location_description": "przy wejściu",
+     "indoor": true,
+     "commune": "Kraków",
+     "city": "Kraków",
+     "street_number": "5",
+     "postal_code": "31-004",
+     "latitude": 50.061,
+     "longitude": 19.937,
+     "access": "public",
+     "opening_hours": "24/7",
+     "device_status": "operational",
+     "data_date": "2026-11-20"
+    }
+   ],
+   "expect": {
+    "actions": [
+     [
+      2,
+      "create",
+      99,
+      null
+     ]
+    ]
+   }
+  },
+  {
+   "name": "different name and address nearby is not a duplicate",
+   "format": "csv",
+   "content": "source_id,location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,data_date\nA1,Urząd Gminy,przy wejściu,true,Kraków,Kraków,7,31-004,50.061050,19.937000,public,24/7,operational,2026-11-20\n",
+   "all": [
+    {
+     "id": 99,
+     "source_id": "X",
+     "operator_name": "Instytucja testowa",
+     "location_name": "Biblioteka",
+     "location_description": "przy wejściu",
+     "indoor": true,
+     "commune": "Kraków",
+     "city": "Kraków",
+     "street_number": "5",
+     "postal_code": "31-004",
+     "latitude": 50.061,
+     "longitude": 19.937,
+     "access": "public",
+     "opening_hours": "24/7",
+     "device_status": "operational",
+     "data_date": "2026-11-20"
+    }
+   ],
+   "expect": {
+    "actions": [
+     [
+      2,
+      "create",
+      null,
+      null
+     ]
+    ]
+   }
+  },
+  {
+   "name": "duplicate rows inside one file",
+   "format": "csv",
+   "content": "source_id,location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,data_date\nA1,Hala sportowa,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,2026-11-20\nA2,Hala Sportowa!,przy wejściu,true,Kraków,Kraków,5,31-004,50.061020,19.937000,public,24/7,operational,2026-11-20\n",
+   "expect": {
+    "summary": {
+     "create": 2,
+     "duplicates": 1
+    },
+    "actions": [
+     [
+      2,
+      "create",
+      null,
+      null
+     ],
+     [
+      3,
+      "create",
+      null,
+      2
+     ]
+    ]
+   }
+  },
+  {
+   "name": "JSON list of records",
+   "format": "json",
+   "content": "[{\"source_id\": \"J1\", \"operator_name\": \"Instytucja testowa\", \"location_name\": \"Hala sportowa\", \"location_description\": \"przy wejściu\", \"indoor\": true, \"commune\": \"Kraków\", \"city\": \"Kraków\", \"street_number\": \"5\", \"postal_code\": \"31-004\", \"latitude\": 50.061, \"longitude\": 19.937, \"access\": \"public\", \"opening_hours\": \"24/7\", \"device_status\": \"operational\", \"data_date\": \"2026-11-20\"}]",
+   "expect": {
+    "summary": {
+     "rows": 1,
+     "create": 1
+    }
+   }
+  },
+  {
+   "name": "GeoJSON FeatureCollection",
+   "format": "geojson",
+   "content": "{\"type\": \"FeatureCollection\", \"features\": [{\"type\": \"Feature\", \"geometry\": {\"type\": \"Point\", \"coordinates\": [19.937, 50.061]}, \"properties\": {\"source_id\": \"G1\", \"operator_name\": \"Instytucja testowa\", \"location_name\": \"Hala sportowa\", \"location_description\": \"przy wejściu\", \"indoor\": true, \"commune\": \"Kraków\", \"city\": \"Kraków\", \"street_number\": \"5\", \"postal_code\": \"31-004\", \"access\": \"public\", \"opening_hours\": \"24/7\", \"device_status\": \"operational\", \"data_date\": \"2026-11-20\"}}]}",
+   "expect": {
+    "summary": {
+     "rows": 1,
+     "create": 1
+    }
+   }
+  },
+  {
+   "name": "GeoJSON with a non-point geometry",
+   "format": "geojson",
+   "content": "{\"type\": \"FeatureCollection\", \"features\": [{\"type\": \"Feature\", \"geometry\": {\"type\": \"LineString\", \"coordinates\": [[19.9, 50.0], [19.8, 50.1]]}, \"properties\": {}}]}",
+   "expect": {
+    "file_error": true
+   }
+  },
+  {
+   "name": "JSON of a wrong shape",
+   "format": "json",
+   "content": "{\"a\": 1}",
+   "expect": {
+    "file_error": true
+   }
+  },
+  {
+   "name": "invalid JSON",
+   "format": "json",
+   "content": "[{",
+   "expect": {
+    "file_error": true
+   }
+  },
+  {
+   "name": "unsupported format",
+   "format": "xlsx",
+   "content": "x",
+   "expect": {
+    "file_error": true
+   }
+  }
+ ]
+}

@@ -1,0 +1,26 @@
+{
+  "$comment": "Shared test cases for backend/aed/validation.py and frontend/aed-validator.js. Each case applies `changes` to the first record of schema/aed-example.csv (provider fields only) and lists the fields expected to have errors.",
+  "cases": [
+    {"name": "example row is valid", "changes": {}, "errors": []},
+    {"name": "JSON types are accepted", "changes": {"indoor": true, "floor": 0, "latitude": 50.059, "longitude": 19.937}, "errors": []},
+    {"name": "missing required fields", "changes": {"city": "", "latitude": null, "opening_hours": "   "}, "errors": ["city", "latitude", "opening_hours"]},
+    {"name": "optional fields may be empty", "changes": {"street_type": "", "street": "", "teryt_terc": "", "contact_phone": "", "floor": ""}, "errors": []},
+    {"name": "postal code format", "changes": {"postal_code": "31004"}, "errors": ["postal_code"], "messages": {"postal_code": "Kod pocztowy w formacie NN-NNN, np. 31-004."}},
+    {"name": "phone is 9 digits", "changes": {"contact_phone": "+48 120 000 000"}, "errors": ["contact_phone"]},
+    {"name": "REGON length", "changes": {"operator_regon": "1234567890"}, "errors": ["operator_regon"]},
+    {"name": "coordinates outside Poland", "changes": {"latitude": "40.1", "longitude": "25"}, "errors": ["latitude", "longitude"]},
+    {"name": "decimal comma is rejected", "changes": {"longitude": "19,937"}, "errors": ["longitude"]},
+    {"name": "at most 6 decimal places", "changes": {"latitude": "50.0590001"}, "errors": ["latitude"], "messages": {"latitude": "Podaj najwyżej 6 miejsc po przecinku."}},
+    {"name": "enum codes only", "changes": {"access": "yes", "device_status": "sprawny"}, "errors": ["access", "device_status"]},
+    {"name": "boolean true/false only", "changes": {"indoor": "tak"}, "errors": ["indoor"]},
+    {"name": "invalid calendar date", "changes": {"data_date": "2026-02-30", "last_inspection_date": "21.11.2026"}, "errors": ["data_date", "last_inspection_date"]},
+    {"name": "integer floor", "changes": {"floor": "1.5"}, "errors": ["floor"]},
+    {"name": "opening hours variants", "changes": {"opening_hours": "Mo-Fr 06:00-22:00; Sa,Su 08:00-20:00"}, "errors": []},
+    {"name": "opening hours 24/7", "changes": {"opening_hours": "24/7"}, "errors": []},
+    {"name": "opening hours free text is rejected", "changes": {"opening_hours": "pn-pt 8-16"}, "errors": ["opening_hours"]},
+    {"name": "e-mail format", "changes": {"contact_email": "sekretariat.example.org"}, "errors": ["contact_email"]},
+    {"name": "min length", "changes": {"location_name": "x"}, "errors": ["location_name"]},
+    {"name": "unknown column", "changes": {"kod_szafki": "1234"}, "errors": ["kod_szafki"]},
+    {"name": "system fields are ignored for providers", "changes": {"id": "not-a-uuid", "source": "excel", "verified_at": "wczoraj"}, "errors": []}
+  ]
+}
