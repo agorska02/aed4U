@@ -1,6 +1,10 @@
-# Puls na mapie – zbieranie danych o defibrylatorach AED (HackNation)
+ Sprawdź AEDres – zbieranie danych o defibrylatorach
 
-Akcja **„Puls na mapie”** (*Udostępnij. Uratuj.*) – prototyp mechanizmu, który zbiera w portalu
+Akcja **„Sprawdź AEDres”** 
+Twoje zgłoszenie może przywrócić komuś puls
+Udostępnij. Uratuj.
+
+Prototyp mechanizmu, który zbiera w portalu
 dane.gov.pl dane o defibrylatorach AED od wszystkich dysponentów w **jednym, jednolitym zbiorze**:
 
 - **wzorcowy zakres danych** – [`schema/`](schema/README.md): Table Schema, słowniki, szablon CSV;
