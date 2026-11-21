@@ -41,7 +41,7 @@
     if (filters.publicOnly && p.access !== "public") return false;
     if (filters.pediatric && p.pediatric !== "yes") return false;
     if (!query) return true;
-    var haystack = [p.location_name, p.city, p.commune, p.street, p.postal_code, p.operator_name].join(" ").toLowerCase();
+    var haystack = [p.location_name, buildingType(p), p.city, p.commune, p.street, p.postal_code, p.operator_name].join(" ").toLowerCase();
     return query.split(/\s+/).every(function (word) { return haystack.indexOf(word) !== -1; });
   }
 
@@ -73,6 +73,12 @@
   }
 
   // --- list ---
+  function buildingType(p) {
+    return p.building_type === "other" && p.building_type_other
+      ? p.building_type_other
+      : client.formatValue("building_type", p.building_type);
+  }
+
   function deviceItem(feature, now) {
     var p = feature.properties;
     var c = feature.geometry.coordinates;
@@ -83,7 +89,7 @@
     var distance = formatDistance(distanceTo(feature));
     if (distance) title.appendChild(el("span", { className: "aed-item__distance", text: " · " + distance }));
     item.appendChild(title);
-    item.appendChild(el("p", { className: "aed-item__where", text: p.location_description }));
+    item.appendChild(el("p", { className: "aed-item__where", text: buildingType(p) + " · " + p.location_description }));
     item.appendChild(el("p", { text: client.addressLine(p) }));
 
     var facts = el("ul", { className: "aed-item__facts" });

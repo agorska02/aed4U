@@ -117,6 +117,66 @@
       "x-group": "place"
     },
     {
+      "name": "building_type",
+      "title": "Typ budynku",
+      "description": "Rodzaj obiektu",
+      "type": "string",
+      "constraints": {
+        "required": true,
+        "enum": [
+          "school",
+          "shop",
+          "swimming_pool",
+          "workplace",
+          "airport",
+          "golf_course",
+          "gym",
+          "home",
+          "hotel",
+          "sports_facility",
+          "church",
+          "shopping_centre",
+          "public_venue",
+          "station",
+          "terminal",
+          "other"
+        ]
+      },
+      "x-enumLabels": {
+        "school": "Szkoła",
+        "shop": "Sklep",
+        "swimming_pool": "Basen",
+        "workplace": "Miejsce pracy",
+        "airport": "Lotnisko",
+        "golf_course": "Pole golfowe",
+        "gym": "Sala gimnastyczna",
+        "home": "Dom",
+        "hotel": "Hotel",
+        "sports_facility": "Obiekt sportowy",
+        "church": "Budynek kościoła",
+        "shopping_centre": "Centrum handlowe",
+        "public_venue": "Lokal publiczny",
+        "station": "Stacja",
+        "terminal": "Terminal",
+        "other": "Inny typ budynku"
+      },
+      "x-group": "place"
+    },
+    {
+      "name": "building_type_other",
+      "title": "Rodzaj obiektu",
+      "description": "Wypełnij tylko, gdy wybrano „Inny typ budynku”, np. „przychodnia”, „urząd”.",
+      "type": "string",
+      "constraints": {
+        "minLength": 2,
+        "maxLength": 100
+      },
+      "x-requiredIf": {
+        "building_type": "other"
+      },
+      "x-group": "place"
+    },
+    {
       "name": "location_description",
       "title": "Dokładne miejsce",
       "description": "Gdzie dokładnie szukać urządzenia, np. „hol główny, przy recepcji”, „ściana zewnętrzna od strony parkingu”.",
@@ -538,16 +598,6 @@
       "description": "Data i czas weryfikacji rekordu przez administratora zbioru, ISO 8601 z czasem UTC, np. 2026-11-21T10:15:00Z.",
       "type": "datetime",
       "x-system": true
-    },
-    {
-      "name": "notes",
-      "title": "Uwagi",
-      "type": "string",
-      "constraints": {
-        "maxLength": 3000
-      },
-      "x-osm": "note",
-      "x-group": "meta"
     }
   ]
 }

@@ -13,7 +13,7 @@ rozproszonych źródeł można połączyć w **jeden ogólnopolski zbiór**.
 | `aed.schema.json` | Schemat w formacie [Frictionless Table Schema](https://specs.frictionlessdata.io/table-schema/): nazwy, typy, wymagalność, wzorce, zakresy, słowniki, polskie opisy |
 | `aed-template.csv` | Pusty szablon dla dysponenta (bez kolumn nadawanych przez system) |
 | `aed-example.csv` | 5 rekordów przykładowych – **dane fikcyjne**, oznaczone `[PRZYKŁAD]` |
-| `dictionaries/*.csv` | Słowniki wartości: `access`, `device_status`, `pediatric`, `manufacturers`, `street_types`, `voivodeships` |
+| `dictionaries/*.csv` | Słowniki wartości: `access`, `device_status`, `pediatric`, `building_types`, `manufacturers`, `street_types`, `voivodeships` |
 
 ## Zasady techniczne
 
@@ -47,13 +47,13 @@ rozproszonych źródeł można połączyć w **jeden ogólnopolski zbiór**.
 | Grupa | Pola wymagane | Pola zalecane |
 |---|---|---|
 | Dysponent | `operator_name` (z profilu instytucji) | `operator_regon` (z profilu instytucji) |
-| Miejsce | `location_name`, `location_description`, `indoor` | `floor` |
+| Miejsce | `location_name`, `building_type` (słownik; dla „Inny” – `building_type_other`), `location_description`, `indoor` | `floor` |
 | Adres | `commune`, `city`, `street_number`, `postal_code` | `voivodeship`, `county`, `street_type`, `street` |
 | Położenie | `latitude`, `longitude` | – |
 | Dostępność | `access`, `opening_hours` | `access_notes` |
 | Urządzenie | `device_status`, `manufacturer` (słownik; dla „Inny” – `manufacturer_other`), `serial_number` (tylko dla administratora) | `pediatric`, `model`, `last_inspection_date`, `electrodes_expiry_date`, `battery_expiry_date` |
 | Kontakt | – | `contact_phone`, `contact_email` (z profilu instytucji); `internal_contact_phone` – tylko dla administratora, niepublikowany |
-| Aktualność | `data_date` (dane na dzień) | `notes` |
+| Aktualność | `data_date` (dane na dzień) | – |
 
 Pełny opis każdego pola (tytuł, opis, ograniczenia) jest w `aed.schema.json`.
 
