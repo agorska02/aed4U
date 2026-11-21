@@ -17,22 +17,39 @@
 
   var reports = [];
   var filter = $("status-filter");
+  var sourceFilter = $("source-filter");
+  var duplicateFilter = $("duplicate-filter");
 
   function render() {
     var body = $("reports-body");
     body.textContent = "";
-    var visible = reports.filter(function (item) { return !filter.value || item.attributes.status === filter.value; });
+    var visible = reports.filter(function (item) {
+      var a = item.attributes;
+      return (!filter.value || a.status === filter.value) &&
+        (!sourceFilter.value || a.source === sourceFilter.value) &&
+        (!duplicateFilter.checked || !!a.possible_duplicate);
+    });
     $("reports-empty").hidden = visible.length > 0;
     $("reports-table").hidden = visible.length === 0;
 
     visible.forEach(function (item) {
       var a = item.attributes;
       var row = document.createElement("tr");
-      [a.location_name, a.organization_title, a.data_date, a.notes || "–"].forEach(function (value) {
-        var cell = document.createElement("td");
-        cell.textContent = value || "";
-        row.appendChild(cell);
-      });
+      var place = document.createElement("td");
+      place.appendChild(client.el("strong", { text: a.location_name || "" }));
+      place.appendChild(client.el("div", { className: "hint", text: client.addressLine(a) }));
+      var note = client.duplicateNote(a);
+      if (note) {
+        note.appendChild(document.createTextNode(" – sprawdź, czy to to samo urządzenie; duplikat odrzuć z komentarzem."));
+        place.appendChild(note);
+      }
+      place.appendChild(client.renderDetails(a));
+      row.appendChild(place);
+      var orgCell = document.createElement("td");
+      orgCell.appendChild(document.createTextNode(a.organization_title || ""));
+      orgCell.appendChild(client.el("div", { className: "hint", text: client.sourceLabel(a.source) }));
+      row.appendChild(orgCell);
+      row.appendChild(client.el("td", { text: a.data_date || "" }));
       var statusCell = document.createElement("td");
       statusCell.appendChild(client.statusBadge(a.status));
       row.appendChild(statusCell);
@@ -122,6 +139,15 @@
   }
 
   filter.addEventListener("change", render);
+  sourceFilter.addEventListener("change", render);
+  duplicateFilter.addEventListener("change", render);
+  Array.prototype.forEach.call(document.querySelectorAll("[data-export]"), function (button) {
+    button.addEventListener("click", function () {
+      client.downloadExport(button.getAttribute("data-export")).catch(function () {
+        client.showStatus("Nie udało się pobrać zbioru.", "error");
+      });
+    });
+  });
 
   var auth = client.initAuth({ onLogin: loadReports, requireRole: "admin" });
 })();

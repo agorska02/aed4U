@@ -1,20 +1,86 @@
+from django import forms
 from django.contrib import admin, messages
 from django.utils.translation import gettext_lazy as _, ngettext
 
 from mcod.aed.models import AedReport
+from mcod.aed.validation import fields as schema_fields, load_schema, validate_record
 from mcod.organizations.models import Organization
 
-PROVIDER_FIELDS = ("organization", "location_name", "notes", "data_date")
-VERIFICATION_FIELDS = ("status", "verification_comment", "verified_by", "verified_at")
-AUDIT_FIELDS = ("created", "created_by", "modified", "modified_by")
+AED_FIELDS = tuple(f["name"] for f in schema_fields(provider_only=True))
+PROVIDER_FIELDS = ("organization",) + AED_FIELDS
+VERIFICATION_FIELDS = (
+    "status",
+    "verification_comment",
+    "verified_by",
+    "verified_at",
+    "possible_duplicate_of",
+    "possible_duplicate_distance_m",
+)
+AUDIT_FIELDS = ("uuid", "source", "created", "created_by", "modified", "modified_by")
+
+
+def aed_fieldsets():
+    """One fieldset per section of the reference data scope (x-groups), in schema order."""
+    schema = load_schema()
+    return [
+        (
+            group["title"],
+            {"fields": tuple(f["name"] for f in schema_fields(provider_only=True) if f.get("x-group") == group["name"])},
+        )
+        for group in schema["x-groups"]
+    ]
+
+
+class PossibleDuplicateFilter(admin.SimpleListFilter):
+    title = _("Possible duplicate")
+    parameter_name = "possible_duplicate"
+
+    def lookups(self, request, model_admin):
+        return (("yes", _("Yes")), ("no", _("No")))
+
+    def queryset(self, request, queryset):
+        if self.value() == "yes":
+            return queryset.filter(possible_duplicate_of__isnull=False)
+        if self.value() == "no":
+            return queryset.filter(possible_duplicate_of__isnull=True)
+        return queryset
+
+
+class AedReportForm(forms.ModelForm):
+    """Applies the shared schema rules (mcod.aed.validation) on top of the model validation."""
+
+    class Meta:
+        model = AedReport
+        fields = "__all__"
+
+    def clean(self):
+        cleaned_data = super().clean()
+        editable = [name for name in AED_FIELDS if name in self.fields]
+        if editable:
+            record = {name: cleaned_data.get(name) for name in editable}
+            _values, errors = validate_record(record)
+            for name, message in errors.items():
+                if name in self.fields and name not in self.errors:
+                    self.add_error(name, message)
+        return cleaned_data
 
 
 @admin.register(AedReport)
 class AedReportAdmin(admin.ModelAdmin):
     """Providers (editors) manage reports of their institutions; superusers verify all reports."""
 
-    list_display = ("location_name", "organization", "status", "data_date", "created", "verified_at")
-    search_fields = ("location_name", "notes", "organization__title")
+    form = AedReportForm
+    list_display = (
+        "location_name",
+        "city",
+        "organization",
+        "source",
+        "device_status",
+        "status",
+        "possible_duplicate_of",
+        "data_date",
+    )
+    search_fields = ("location_name", "city", "operator_name", "notes", "organization__title")
     actions = ["submit_for_verification", "mark_verified", "mark_rejected"]
 
     def get_queryset(self, request):
@@ -24,17 +90,19 @@ class AedReportAdmin(admin.ModelAdmin):
         return queryset.filter(organization__in=request.user.organizations.all())
 
     def get_list_filter(self, request):
-        return ("status", "organization") if request.user.is_superuser else ("status",)
+        if request.user.is_superuser:
+            return ("status", "device_status", "access", "source", PossibleDuplicateFilter, "organization")
+        return ("status", "device_status")
 
     def get_fieldsets(self, request, obj=None):
-        fieldsets = [(_("AED availability report"), {"fields": PROVIDER_FIELDS})]
+        fieldsets = [(_("Institution"), {"fields": ("organization",)})] + aed_fieldsets()
         if obj:
             fieldsets.append((_("Verification"), {"fields": VERIFICATION_FIELDS}))
             fieldsets.append((_("History"), {"fields": AUDIT_FIELDS}))
         return fieldsets
 
     def get_readonly_fields(self, request, obj=None):
-        readonly = AUDIT_FIELDS + ("verified_by", "verified_at")
+        readonly = AUDIT_FIELDS + ("verified_by", "verified_at", "possible_duplicate_of", "possible_duplicate_distance_m")
         if request.user.is_superuser:
             return readonly
         readonly += ("status", "verification_comment")

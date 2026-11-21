@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mapa defibrylatorów AED – Puls na mapie (prototyp)</title>
+  <meta name="description" content="Ogólnopolski, otwarty zbiór danych o defibrylatorach AED – znajdź najbliższe urządzenie.">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
+        integrity="sha512-h9FcoyWjHcOcmEVkxOfTLnmZFWIH0iZhZT1H2TbOq55xssQGEJHEaIm+PgoUaZbRvQTNTluNOEfb1ZRy6D3BOw=="
+        crossorigin="anonymous" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="styles.css">
+  <script src="config.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"
+          integrity="sha512-puJW3E/qXDqYp9IfhAI54BJEaWIfloJ7JWs7OeD5i6ruC9JZL1gERT1wjtwXFlh7CjE7ZJ+/vcRZRkIYIb6p4g=="
+          crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
+  <script src="aed-schema.js" defer></script>
+  <script src="aed-validator.js" defer></script>
+  <script src="aed-import.js" defer></script>
+  <script src="aed-hours.js" defer></script>
+  <script src="api-mock.js" defer></script>
+  <script src="app.js" defer></script>
+  <script src="map.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Przejdź do treści</a>
+  <a class="skip-link" href="#aed-list">Przejdź do listy defibrylatorów</a>
+
+  <div class="prototype-banner" role="note">
+    Prototyp – wersja testowa przygotowana na hackathon. Dane przykładowe są fikcyjne.
+    <span id="demo-banner" hidden>
+      <strong>Tryb demo</strong> – <span id="demo-mode"></span>.
+      <button type="button" class="btn btn--small" id="demo-reset" hidden>Przywróć dane demo</button>
+    </span>
+  </div>
+
+  <header class="site-header">
+    <div class="container site-header__inner">
+      <a class="site-header__brand" href="mapa.html">
+        <span class="site-header__logo" aria-hidden="true"></span>
+        <span>Portal otwartych danych <small>(prototyp)</small></span>
+      </a>
+      <nav aria-label="Menu główne">
+        <ul class="site-nav">
+          <li><a href="mapa.html" aria-current="page">Mapa AED</a></li>
+          <li><a href="index.html">Zgłoś AED</a></li>
+          <li><a href="admin.html">Weryfikacja (admin)</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <div class="emergency-bar" role="note">
+    <div class="container">
+      <strong>W nagłym wypadku dzwoń <a href="tel:112">112</a>.</strong>
+      Dyspozytor poprowadzi Cię przez resuscytację i wskaże najbliższy defibrylator.
+    </div>
+  </div>
+
+  <main id="main" class="container">
+    <h1>Mapa defibrylatorów AED</h1>
+    <p class="lead">
+      Ogólnopolski, otwarty zbiór danych o automatycznych defibrylatorach zewnętrznych – dane od wszystkich
+      dysponentów, w jednym zbiorze, zweryfikowane przez administratora portalu.
+    </p>
+
+    <section class="map-toolbar" aria-labelledby="filters-heading">
+      <h2 id="filters-heading" class="sr-only">Wyszukiwanie i filtry</h2>
+      <div class="map-toolbar__row">
+        <div class="field field--search">
+          <label for="search">Miejscowość, adres lub nazwa miejsca</label>
+          <input id="search" type="search" autocomplete="address-level2" placeholder="np. Kraków">
+        </div>
+        <button type="button" class="btn btn--primary" id="locate-btn">Pokaż najbliższe</button>
+      </div>
+      <fieldset class="filters">
+        <legend>Pokaż tylko</legend>
+        <div class="filter"><input type="checkbox" id="f-open-now"><label for="f-open-now">dostępne teraz</label></div>
+        <div class="filter"><input type="checkbox" id="f-24h"><label for="f-24h">całodobowe (24/7)</label></div>
+        <div class="filter"><input type="checkbox" id="f-public"><label for="f-public">dostępne dla każdego</label></div>
+        <div class="filter"><input type="checkbox" id="f-pediatric"><label for="f-pediatric">z trybem dla dzieci</label></div>
+      </fieldset>
+      <p id="results-count" class="results-count" role="status" aria-live="polite"></p>
+      <div id="map-status" class="alert alert--info" role="status" hidden></div>
+    </section>
+
+    <div class="view-toggle" role="group" aria-label="Widok">
+      <button type="button" class="btn btn--small" id="show-list" aria-pressed="true">Lista</button>
+      <button type="button" class="btn btn--small" id="show-map" aria-pressed="false">Mapa</button>
+    </div>
+
+    <div class="map-layout" id="map-layout" data-view="list">
+      <section class="map-layout__list" aria-labelledby="list-heading">
+        <h2 id="list-heading" class="sr-only">Lista defibrylatorów</h2>
+        <ol id="aed-list" class="aed-list" tabindex="-1"></ol>
+        <p id="list-empty" class="hint" hidden>Brak defibrylatorów spełniających kryteria. Zmień filtry.</p>
+      </section>
+      <section class="map-layout__map" aria-label="Mapa defibrylatorów">
+        <div id="map" class="map"></div>
+        <p class="hint map-hint">Mapa jest uzupełnieniem listy – wszystkie informacje są też na liście obok.</p>
+      </section>
+    </div>
+
+    <section class="card card--wide" aria-labelledby="data-heading">
+      <h2 id="data-heading">Otwarte dane</h2>
+      <p>
+        Pobierz cały zbiór – <span id="data-date"></span>. Kolumny zgodne z
+        <a href="../schema/README.md">wzorcowym zakresem danych o AED</a>.
+      </p>
+      <ul class="download-list">
+        <li><button type="button" class="btn btn--small btn--secondary" data-export="csv">CSV</button> – arkusze, analizy</li>
+        <li><button type="button" class="btn btn--small btn--secondary" data-export="json">JSON</button> – aplikacje</li>
+        <li><button type="button" class="btn btn--small btn--secondary" data-export="geojson">GeoJSON</button> – mapy i systemy GIS</li>
+      </ul>
+      <p class="hint">
+        Masz defibrylator w swojej instytucji? <a href="index.html">Zgłoś go</a> – <strong>Udostępnij. Uratuj.</strong>
+      </p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>Prototyp podstrony w architekturze portalu otwartych danych (mcod). Podkład mapy © autorzy OpenStreetMap (przy otwarciu z pliku: styl Humanitarian OSM, serwer OpenStreetMap France).</p>
+    </div>
+  </footer>
+</body>
+</html>

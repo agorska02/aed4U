@@ -7,24 +7,26 @@
 # Requires hackathon/integration/portal.patch to be applied (INSTALLED_APPS + routes).
 
 x-aed-volume: &aed-volume ./hackathon/backend/aed:/usr/src/mcod_backend/mcod/aed
+# Reference data scope read by mcod.aed.validation (single source shared with the demo and the frontend).
+x-aed-schema-volume: &aed-schema-volume ./hackathon/schema:/usr/src/mcod_backend/mcod/aed/schema:ro
 
 services:
   mcod-local-tests:
-    volumes: [*aed-volume]
+    volumes: [*aed-volume, *aed-schema-volume]
   mcod-local-tests-api:
-    volumes: [*aed-volume]
+    volumes: [*aed-volume, *aed-schema-volume]
   mcod-local-tests-cms:
-    volumes: [*aed-volume]
+    volumes: [*aed-volume, *aed-schema-volume]
   mcod-local-admin:
-    volumes: [*aed-volume]
+    volumes: [*aed-volume, *aed-schema-volume]
   mcod-local-api:
-    volumes: [*aed-volume]
+    volumes: [*aed-volume, *aed-schema-volume]
   mcod-local-cms:
-    volumes: [*aed-volume]
+    volumes: [*aed-volume, *aed-schema-volume]
   mcod-local-celery:
-    volumes: [*aed-volume]
+    volumes: [*aed-volume, *aed-schema-volume]
   mcod-local-run:
-    volumes: [*aed-volume]
+    volumes: [*aed-volume, *aed-schema-volume]
 
   # Static subpage on http://localhost:8090 — /api/* is proxied to the Falcon API,
   # so the page and the API share one origin (no CORS needed).
@@ -37,6 +39,8 @@ services:
       - "8090:80"
     volumes:
       - ./hackathon/frontend:/usr/share/nginx/html:ro
+      # Templates and the reference data scope linked from the page (../schema/ → /schema/).
+      - ./hackathon/schema:/usr/share/nginx/html/schema:ro
       # Portal mode: real API instead of the in-browser mock.
       - ./hackathon/integration/config.portal.js:/usr/share/nginx/html/config.js:ro
     configs:

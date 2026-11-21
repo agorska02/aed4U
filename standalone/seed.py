@@ -1,20 +1,50 @@
 """Demo accounts and sample reports for the standalone AED prototype.
 
-Usage: python standalone/seed.py [--db PATH] [--reset]
+Sample reports are the records from schema/aed-example.csv, validated with the shared validator.
+Usage: python standalone/seed.py [--db PATH_OR_POSTGRES_URL] [--reset]
 """
 
 import argparse
+import csv
 import datetime
 import hashlib
+import os
 import secrets
-import sqlite3
+import sys
+import uuid
 from pathlib import Path
 
+from db import connect
+
 HERE = Path(__file__).resolve().parent
-DEFAULT_DB = HERE / "aed_demo.sqlite3"
-SCHEMA = HERE / "schema.sql"
+ROOT = HERE.parent
+# SQLite file by default; AED_DATABASE_URL=postgresql://… (or --db) switches to PostgreSQL.
+DEFAULT_DB = os.environ.get("AED_DATABASE_URL") or str(HERE / "aed_demo.sqlite3")
+EXAMPLES = ROOT / "schema" / "aed-example.csv"
+SCHEMA_VERSION = 3  # an older demo database is recreated automatically
+
+sys.path.insert(0, str(ROOT / "backend"))
+from aed import importing  # noqa: E402
+from aed.validation import field_names, to_json_value, validate_record  # noqa: E402
+
+# server.py imports the shared modules through this file (it puts backend/ on sys.path first).
+__all__ = [
+    "AED_COLUMNS",
+    "DEFAULT_DB",
+    "connect",
+    "db_values",
+    "importing",
+    "init_db",
+    "insert_report",
+    "now_iso",
+    "seed",
+    "validate_record",
+    "verify_password",
+]
 
 PBKDF2_ITERATIONS = 100_000
+NULLABLE_COLUMNS = ("floor", "last_inspection_date", "electrodes_expiry_date", "battery_expiry_date")
+AED_COLUMNS = field_names(provider_only=True)
 
 # Test data only — passwords are shown on the demo login page.
 ORGANIZATIONS = ["Urząd Miasta Demo (instytucja A)", "Szpital Demo (instytucja B)"]
@@ -24,11 +54,13 @@ USERS = [
     ("dostawca2@demo.local", "Dostawca B", "Demo123!", True, False, [1]),
     ("admin@demo.local", "Administrator portalu", "Admin123!", True, True, []),
 ]
+# For each row of aed-example.csv: organization index, verification status, verification comment.
 REPORTS = [
-    # organization index, location_name, notes, status, verification_comment
-    (0, "Dworzec Centralny – hala główna", "Przy kasach biletowych", "submitted", ""),
-    (0, "Urząd Miasta – parter", "", "verified", ""),
-    (1, "Szpital Demo – izba przyjęć", "Wejście od ul. Szpitalnej", "rejected", "Uzupełnij godziny dostępności."),
+    (0, "verified", ""),
+    (0, "submitted", ""),
+    (1, "verified", ""),
+    (1, "rejected", "Po wymianie elektrod uzupełnij nowy termin ważności."),
+    (0, "submitted", ""),
 ]
 
 
@@ -48,68 +80,118 @@ def verify_password(password: str, encoded: str) -> bool:
 
 
 def now_iso() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat()
+    return datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def init_db(conn: sqlite3.Connection) -> None:
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.executescript(SCHEMA.read_text(encoding="utf-8"))
+def init_db(db, reset=False) -> None:
+    db.init_schema(SCHEMA_VERSION, reset=reset)
 
 
-def seed(conn: sqlite3.Connection) -> None:
+def db_values(cleaned):
+    """Cleaned validator output -> column values (same conventions as the Django model: '' for empty text)."""
+    values = {}
+    for name in AED_COLUMNS:
+        value = to_json_value(cleaned.get(name))
+        if value is None and name not in NULLABLE_COLUMNS:
+            value = ""
+        values[name] = value
+    return values
+
+
+def insert_report(
+    db,
+    values,
+    *,
+    organization_id,
+    user_id,
+    status,
+    source,
+    report_uuid=None,
+    verified_by_id=None,
+    verified_at=None,
+    verification_comment="",
+    timestamp=None,
+    possible_duplicate_of_id=None,
+    possible_duplicate_distance_m=None,
+):
+    timestamp = timestamp or now_iso()
+    row = dict(values)
+    row.update(
+        uuid=report_uuid or str(uuid.uuid4()),
+        organization_id=organization_id,
+        source=source,
+        status=status,
+        verification_comment=verification_comment,
+        verified_by_id=verified_by_id,
+        verified_at=verified_at,
+        created=timestamp,
+        created_by_id=user_id,
+        modified=timestamp,
+        modified_by_id=verified_by_id or user_id,
+        possible_duplicate_of_id=possible_duplicate_of_id,
+        possible_duplicate_distance_m=possible_duplicate_distance_m,
+    )
+    return db.insert("aed_aedreport", row)
+
+
+def example_records():
+    with open(str(EXAMPLES), encoding="utf-8", newline="") as fh:
+        return list(csv.DictReader(fh))
+
+
+def seed(db) -> None:
     """Insert demo data if the database is empty."""
-    if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]:
+    if db.query("SELECT COUNT(*) AS n FROM users")[0]["n"]:
         return
-    org_ids = [conn.execute("INSERT INTO organizations (title) VALUES (?)", (title,)).lastrowid for title in ORGANIZATIONS]
-    user_ids = {}
-    for email, fullname, password, is_staff, is_superuser, orgs in USERS:
-        user_id = conn.execute(
-            "INSERT INTO users (email, fullname, password_hash, is_staff, is_superuser) VALUES (?, ?, ?, ?, ?)",
-            (email, fullname, hash_password(password), int(is_staff), int(is_superuser)),
-        ).lastrowid
-        user_ids[email] = user_id
-        for index in orgs:
-            conn.execute("INSERT INTO user_organizations (user_id, organization_id) VALUES (?, ?)", (user_id, org_ids[index]))
-    admin_id = user_ids["admin@demo.local"]
-    providers = {0: user_ids["dostawca@demo.local"], 1: user_ids["dostawca2@demo.local"]}
-    today = datetime.date.today().isoformat()
-    for org_index, location_name, notes, status, comment in REPORTS:
-        verified = status in ("verified", "rejected")
-        timestamp = now_iso()
-        conn.execute(
-            "INSERT INTO aed_aedreport (organization_id, location_name, notes, data_date, status, verification_comment,"
-            " verified_by_id, verified_at, created, created_by_id, modified, modified_by_id)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                org_ids[org_index],
-                location_name,
-                notes,
-                today,
-                status,
-                comment,
-                admin_id if verified else None,
-                timestamp if verified else None,
-                timestamp,
-                providers[org_index],
-                timestamp,
-                providers[org_index],
-            ),
-        )
-    conn.commit()
+    with db.transaction():
+        org_ids = [db.insert("organizations", {"title": title}) for title in ORGANIZATIONS]
+        user_ids = {}
+        for email, fullname, password, is_staff, is_superuser, orgs in USERS:
+            user_ids[email] = db.insert(
+                "users",
+                {
+                    "email": email,
+                    "fullname": fullname,
+                    "password_hash": hash_password(password),
+                    "is_staff": is_staff,
+                    "is_superuser": is_superuser,
+                },
+            )
+            for index in orgs:
+                db.execute(
+                    "INSERT INTO user_organizations (user_id, organization_id) VALUES (?, ?)", (user_ids[email], org_ids[index])
+                )
+        admin_id = user_ids["admin@demo.local"]
+        providers = {0: user_ids["dostawca@demo.local"], 1: user_ids["dostawca2@demo.local"]}
+        for record, (org_index, status, comment) in zip(example_records(), REPORTS):
+            cleaned, errors = validate_record(record)
+            if errors:
+                raise ValueError(f"Invalid example record {record['id']}: {errors}")
+            verified = status in ("verified", "rejected")
+            insert_report(
+                db,
+                db_values(cleaned),
+                organization_id=org_ids[org_index],
+                user_id=providers[org_index],
+                status=status,
+                source=record["source"],
+                report_uuid=record["id"],
+                verified_by_id=admin_id if verified else None,
+                verified_at=record["verified_at"] if verified else None,
+                verification_comment=comment,
+            )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--db", type=Path, default=DEFAULT_DB)
-    parser.add_argument("--reset", action="store_true", help="delete the database and create it from scratch")
+    parser.add_argument("--db", default=DEFAULT_DB, help="SQLite file path or postgresql:// URL")
+    parser.add_argument("--reset", action="store_true", help="drop the demo tables and create them from scratch")
     args = parser.parse_args()
-    if args.reset and args.db.exists():
-        args.db.unlink()
-    conn = sqlite3.connect(str(args.db))
-    init_db(conn)
-    seed(conn)
-    conn.close()
-    print(f"Demo database ready: {args.db}")
+    db = connect(args.db)
+    init_db(db, reset=args.reset)
+    seed(db)
+    db.close()
+    print(f"Demo database ready ({db.label})")
 
 
 if __name__ == "__main__":

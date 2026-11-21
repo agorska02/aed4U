@@ -1,0 +1,4 @@
+code,name,description,osm_access
+public,dostępny publicznie,"Każdy może skorzystać z urządzenia, bez ograniczeń.",yes
+customers,dostępny w godzinach otwarcia obiektu,"Dostępny dla osób przebywających w obiekcie, w godzinach jego otwarcia.",customers
+private,dostępny tylko dla personelu,"Dostępny wyłącznie dla personelu lub uprawnionych osób.",private

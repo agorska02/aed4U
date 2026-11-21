@@ -1,11 +1,20 @@
 """Standalone demo server for the AED prototype — Python standard library only, no portal code.
 
-Serves hackathon/frontend and an API with the same contract as the portal module (hackathon/backend/aed):
-JSON:API, JWT-like bearer token from POST /api/auth/login, GET/POST /api/aed-reports.
+Serves hackathon/frontend (and hackathon/schema under /schema/) and an API with the same contract as the
+portal module (hackathon/backend/aed):
+- POST /api/auth/login, /api/auth/logout — JWT-like bearer token
+- GET/POST /api/aed-reports — provider's reports / new report from the form
+- POST /api/aed-report-imports — CSV/JSON/GeoJSON file from a data provider (dry run or import)
+- GET /api/aed-devices?format=csv|json|geojson — public unified dataset (verified records only)
+AED attributes, validation, import and export rules come from the shared, Django-independent modules
+backend/aed/validation.py and backend/aed/importing.py (reference data scope: schema/aed.schema.json).
 Demo-only extension: PATCH /api/aed-reports/{id} (administrator verifies a report; in the portal this is
 done in the Administration Panel).
 
-Usage: python standalone/server.py [--port 8090] [--db PATH] [--reset]
+Database: SQLite file (default, standard library only) or PostgreSQL (`--db postgresql://…` or the
+AED_DATABASE_URL environment variable; needs psycopg2) — see db.py and docker-compose.yml.
+
+Usage: python standalone/server.py [--port 8090] [--db PATH_OR_POSTGRES_URL] [--reset]
 NOT for production: demo accounts, no rate limiting, no HTTPS.
 """
 
@@ -14,55 +23,79 @@ import datetime
 import json
 import re
 import secrets
-import sqlite3
-import threading
+import traceback
+import uuid
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
-from seed import DEFAULT_DB, init_db, now_iso, seed, verify_password
+from seed import (
+    AED_COLUMNS,
+    DEFAULT_DB,
+    connect,
+    db_values,
+    importing,
+    init_db,
+    insert_report,
+    now_iso,
+    seed,
+    validate_record,
+    verify_password,
+)
 
 HERE = Path(__file__).resolve().parent
 FRONTEND_DIR = HERE.parent / "frontend"
+SCHEMA_DIR = HERE.parent / "schema"
 JSONAPI = "application/vnd.api+json"
-STATUSES = ("draft", "submitted", "verified", "rejected")
-REPORT_DETAIL = re.compile(r"^/api/(?:\d+\.\d+/)?aed-reports/(\d+)$")
-REPORT_LIST = re.compile(r"^/api/(?:\d+\.\d+/)?aed-reports$")
-CONFIG_JS = 'window.AED_CONFIG = {mode: "api", apiBase: "/api", demo: true, adminPanelUrl: null};\n'
+MAX_BODY = 2_500_000  # bytes; imports carry the file content (max 2 MB of text)
+VERSION = r"(?:\d+\.\d+/)?"
+REPORT_DETAIL = re.compile(rf"^/api/{VERSION}aed-reports/(\d+)$")
+REPORT_LIST = re.compile(rf"^/api/{VERSION}aed-reports$")
+IMPORTS = re.compile(rf"^/api/{VERSION}aed-report-imports$")
+DEVICES = re.compile(rf"^/api/{VERSION}aed-devices$")
+CONFIG_JS = 'window.AED_CONFIG = {{mode: "api", apiBase: "/api", demo: true, adminPanelUrl: null, database: "{0}"}};\n'
+EXPORT_TYPES = {
+    "csv": "text/csv; charset=utf-8",
+    "json": "application/json; charset=utf-8",
+    "geojson": "application/geo+json; charset=utf-8",
+}
+REPORTED_ACTIONS = 500  # at most this many planned actions are returned in an import response
 
 
 class ApiError(Exception):
-    def __init__(self, status, title, detail=None, field=None):
+    def __init__(self, status, title, detail=None, field=None, field_errors=None):
         super().__init__(detail or title)
-        self.status, self.title, self.detail, self.field = status, title, detail or title, field
+        self.status, self.title, self.detail = status, title, detail or title
+        # {field: message}; one JSON:API error per field, like mcod's 422 responses
+        self.field_errors = field_errors or ({field: self.detail} if field else {})
 
     def to_body(self):
-        error = {"status": str(self.status.value), "title": self.title, "detail": self.detail, "code": self.status.phrase}
-        if self.field:
-            error["source"] = {"pointer": f"/data/attributes/{self.field}"}
-        return {"errors": [error]}
+        base = {"status": str(self.status.value), "title": self.title, "code": self.status.phrase}
+        if not self.field_errors:
+            return {"errors": [dict(base, detail=self.detail)]}
+        return {
+            "errors": [
+                dict(base, detail=message, source={"pointer": f"/data/attributes/{field}"})
+                for field, message in self.field_errors.items()
+            ]
+        }
 
 
 class Store:
-    """Thread-safe access to the SQLite demo database."""
+    """Thread-safe access to the demo database (SQLite or PostgreSQL, see db.py)."""
 
-    def __init__(self, path):
-        self.lock = threading.Lock()
-        self.conn = sqlite3.connect(str(path), check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
-        init_db(self.conn)
-        seed(self.conn)
+    def __init__(self, target, reset=False):
+        self.db = connect(target)
+        self.lock = self.db.lock
+        init_db(self.db, reset=reset)
+        seed(self.db)
 
     def query(self, sql, params=()):
-        with self.lock:
-            return self.conn.execute(sql, params).fetchall()
+        return self.db.query(sql, params)
 
     def execute(self, sql, params=()):
-        with self.lock:
-            cursor = self.conn.execute(sql, params)
-            self.conn.commit()
-            return cursor.lastrowid
+        self.db.execute(sql, params)
 
     # --- domain ---
     def user_by_token(self, token):
@@ -77,8 +110,15 @@ class Store:
             for row in self.query("SELECT organization_id FROM user_organizations WHERE user_id = ?", (user["id"],))
         ]
 
+    def organization_title(self, organization_id):
+        return self.query("SELECT title FROM organizations WHERE id = ?", (organization_id,))[0]["title"]
+
     def reports(self, user, report_id=None):
-        sql = "SELECT r.*, o.title AS organization_title FROM aed_aedreport r JOIN organizations o ON o.id = r.organization_id"
+        sql = (
+            "SELECT r.*, o.title AS organization_title, d.uuid AS duplicate_uuid, d.location_name AS duplicate_name"
+            " FROM aed_aedreport r JOIN organizations o ON o.id = r.organization_id"
+            " LEFT JOIN aed_aedreport d ON d.id = r.possible_duplicate_of_id"
+        )
         clauses, params = [], []
         if not user["is_superuser"]:
             clauses.append("r.organization_id IN (SELECT organization_id FROM user_organizations WHERE user_id = ?)")
@@ -90,22 +130,38 @@ class Store:
             sql += " WHERE " + " AND ".join(clauses)
         return self.query(sql + " ORDER BY r.created DESC, r.id DESC", params)
 
+    def planning_records(self, organization_id=None):
+        """Records as dicts (schema fields + id, source_id) for importing.plan_import / find_duplicate."""
+        sql = "SELECT * FROM aed_aedreport"
+        params = ()
+        if organization_id is not None:
+            sql += " WHERE organization_id = ?"
+            params = (organization_id,)
+        return self.query(sql, params)
+
+    def verified_records(self):
+        return self.query("SELECT * FROM aed_aedreport WHERE status = 'verified' ORDER BY id")
+
 
 def serialize_report(row, api_url):
+    attributes = {name: row[name] for name in AED_COLUMNS}
+    attributes["indoor"] = bool(row["indoor"])
+    for name in ("uuid", "source", "organization_title", "status", "verification_comment", "verified_at", "created", "modified"):
+        attributes[name] = row[name]
+    attributes["possible_duplicate"] = (
+        {
+            "id": str(row["possible_duplicate_of_id"]),
+            "uuid": row["duplicate_uuid"],
+            "location_name": row["duplicate_name"],
+            "distance_m": row["possible_duplicate_distance_m"],
+        }
+        if row["possible_duplicate_of_id"]
+        else None
+    )
     return {
         "type": "aed_report",
         "id": str(row["id"]),
-        "attributes": {
-            "organization_title": row["organization_title"],
-            "location_name": row["location_name"],
-            "notes": row["notes"],
-            "data_date": row["data_date"],
-            "status": row["status"],
-            "verification_comment": row["verification_comment"],
-            "verified_at": row["verified_at"],
-            "created": row["created"],
-            "modified": row["modified"],
-        },
+        "attributes": attributes,
         "links": {"self": f"{api_url}/aed-reports/{row['id']}"},
     }
 
@@ -130,24 +186,28 @@ def attributes_of(payload, object_type):
     return data["attributes"]
 
 
-def validate_report(attrs):
-    location_name = attrs.get("location_name")
-    if not isinstance(location_name, str) or not location_name.strip():
-        raise ApiError(HTTPStatus.UNPROCESSABLE_ENTITY, "Field error", "Pole wymagane.", "location_name")
-    if len(location_name) > 300:
-        raise ApiError(HTTPStatus.UNPROCESSABLE_ENTITY, "Field error", "Maksymalnie 300 znaków.", "location_name")
-    notes = attrs.get("notes", "")
-    if not isinstance(notes, str) or len(notes) > 3000:
-        raise ApiError(HTTPStatus.UNPROCESSABLE_ENTITY, "Field error", "Maksymalnie 3000 znaków.", "notes")
-    data_date = attrs.get("data_date") or datetime.date.today().isoformat()
-    try:
-        datetime.date.fromisoformat(data_date)
-    except (TypeError, ValueError):
-        raise ApiError(HTTPStatus.UNPROCESSABLE_ENTITY, "Field error", "Data w formacie rrrr-mm-dd.", "data_date")
-    organization = attrs.get("organization")
-    if organization is not None and not isinstance(organization, int):
-        raise ApiError(HTTPStatus.UNPROCESSABLE_ENTITY, "Field error", "Nieprawidłowy identyfikator instytucji.", "organization")
-    return {"location_name": location_name.strip(), "notes": notes.strip(), "data_date": data_date, "organization": organization}
+def import_response(import_id, status, file_format, plan=None, file_error=None):
+    plan = plan or {"errors": [], "actions": [], "summary": None}
+    actions = [
+        {
+            "row": a["row"],
+            "action": a["action"],
+            "location_name": a["values"].get("location_name"),
+            "duplicate_of": None if a["duplicate_of"] is None else str(a["duplicate_of"]),
+            "duplicate_of_row": a["duplicate_of_row"],
+            "duplicate_distance_m": a["duplicate_distance_m"],
+        }
+        for a in plan["actions"][:REPORTED_ACTIONS]
+    ]
+    attributes = {
+        "status": status,
+        "format": file_format,
+        "file_error": file_error,
+        "summary": plan["summary"],
+        "errors": plan["errors"],
+        "actions": actions,
+    }
+    return {"data": {"type": "aed_report_import", "id": import_id, "attributes": attributes}}
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -160,11 +220,32 @@ class Handler(SimpleHTTPRequestHandler):
         if not getattr(self.server, "quiet", False):
             super().log_message(format, *args)
 
+    def translate_path(self, path):
+        # /schema/* is served from hackathon/schema (templates and dictionaries for data providers).
+        clean = urlsplit(path).path
+        if clean.startswith("/schema/"):
+            name = clean[len("/schema/") :]
+            target = (SCHEMA_DIR / name).resolve()
+            if SCHEMA_DIR.resolve() in target.parents:
+                return str(target)
+            return str(SCHEMA_DIR / "__not_found__")
+        return super().translate_path(path)
+
+    def guess_type(self, path):
+        if str(path).endswith(".csv"):
+            return "text/csv; charset=utf-8"
+        if str(path).endswith(".md"):
+            return "text/markdown; charset=utf-8"
+        if str(path).endswith(".json"):
+            return "application/json; charset=utf-8"
+        return super().guess_type(path)
+
     # --- routing ---
     def do_GET(self):
         path = urlsplit(self.path).path
         if path == "/config.js":
-            return self._send_raw(HTTPStatus.OK, CONFIG_JS.encode(), "application/javascript; charset=utf-8")
+            config = CONFIG_JS.format(self.store.db.label).encode()
+            return self._send_raw(HTTPStatus.OK, config, "application/javascript; charset=utf-8")
         if path.startswith("/api/"):
             return self._api("GET", path)
         return super().do_GET()
@@ -177,9 +258,18 @@ class Handler(SimpleHTTPRequestHandler):
 
     def _api(self, method, path):
         try:
-            status, body = self._dispatch(method, path)
+            self._read_body()
+            result = self._dispatch(method, path)
         except ApiError as exc:
-            status, body = exc.status, exc.to_body()
+            result = (exc.status, exc.to_body())
+        except Exception:  # keep the JSON:API contract and log the traceback
+            self.log_error("Unhandled error in %s %s", method, path)
+            traceback.print_exc()
+            result = (HTTPStatus.INTERNAL_SERVER_ERROR, ApiError(HTTPStatus.INTERNAL_SERVER_ERROR, "Server error").to_body())
+        if len(result) == 3:  # (status, raw bytes, headers) — file downloads
+            status, payload, headers = result
+            return self._send_raw(status, payload, headers.pop("Content-Type"), headers)
+        status, body = result
         self._send_raw(status, json.dumps(body, ensure_ascii=False).encode(), JSONAPI)
 
     def _dispatch(self, method, path):
@@ -193,26 +283,42 @@ class Handler(SimpleHTTPRequestHandler):
             if method == "POST":
                 return self._create_report()
             raise ApiError(HTTPStatus.METHOD_NOT_ALLOWED, "Method not allowed")
+        if IMPORTS.match(path):
+            if method == "POST":
+                return self._import_reports()
+            raise ApiError(HTTPStatus.METHOD_NOT_ALLOWED, "Method not allowed")
+        if DEVICES.match(path):
+            if method == "GET":
+                return self._export_devices()
+            raise ApiError(HTTPStatus.METHOD_NOT_ALLOWED, "Method not allowed")
         match = REPORT_DETAIL.match(path)
         if match and method == "PATCH":
             return self._verify_report(int(match.group(1)))
         raise ApiError(HTTPStatus.NOT_FOUND, "Not found")
 
     # --- helpers ---
-    def _send_raw(self, status, payload, content_type):
+    def _send_raw(self, status, payload, content_type, headers=None):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("Cache-Control", "no-store")
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(payload)
 
-    def _json(self):
+    def _read_body(self):
+        # Read the whole body up front, also for requests rejected early (401/403): an unread body makes
+        # some clients (Windows) see a reset connection instead of the error response.
         length = int(self.headers.get("Content-Length") or 0)
-        if length > 100_000:
+        if length > MAX_BODY:
+            self.close_connection = True
             raise ApiError(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "Payload too large")
+        self._body = self.rfile.read(length) if length else b""
+
+    def _json(self):
         try:
-            return json.loads(self.rfile.read(length) or b"{}")
+            return json.loads(self._body or b"{}")
         except ValueError:
             raise ApiError(HTTPStatus.BAD_REQUEST, "Malformed JSON")
 
@@ -229,6 +335,17 @@ class Handler(SimpleHTTPRequestHandler):
         if not set(require_roles) & set(roles(user)):
             raise ApiError(HTTPStatus.FORBIDDEN, "403 Forbidden", "Additional permissions are required!")
         return user
+
+    def _resolve_organization(self, user, requested):
+        """(organization_id, error message) — same rules as the portal view."""
+        allowed = self.store.organization_ids(user)
+        if requested is not None:
+            if isinstance(requested, bool) or not isinstance(requested, int) or requested not in allowed:
+                return None, "Nie należysz do tej instytucji."
+            return requested, None
+        if not user["is_superuser"] and len(allowed) == 1:
+            return allowed[0], None
+        return None, "Wybierz instytucję, której dotyczy zgłoszenie."
 
     # --- endpoints ---
     def _login(self):
@@ -256,34 +373,132 @@ class Handler(SimpleHTTPRequestHandler):
 
     def _create_report(self):
         user = self._user()
-        attrs = validate_report(attributes_of(self._json(), "aed_report"))
-        allowed = self.store.organization_ids(user)
-        organization = attrs.pop("organization")
-        if organization is not None:
-            if organization not in allowed:
-                raise ApiError(HTTPStatus.UNPROCESSABLE_ENTITY, "Field error", "Nie należysz do tej instytucji.", "organization")
-        elif not user["is_superuser"] and len(allowed) == 1:
-            organization = allowed[0]
-        else:
-            raise ApiError(
-                HTTPStatus.UNPROCESSABLE_ENTITY, "Field error", "Wybierz instytucję, której dotyczy zgłoszenie.", "organization"
+        attrs = dict(attributes_of(self._json(), "aed_report"))
+        requested_org = attrs.pop("organization", None)
+        # operator_name defaults to the institution's name, so it is not required from the form
+        cleaned, errors = validate_record(attrs, optional=("operator_name",))
+        organization, org_error = self._resolve_organization(user, requested_org)
+        if org_error:
+            errors["organization"] = org_error
+        if errors:
+            raise ApiError(HTTPStatus.UNPROCESSABLE_ENTITY, "Field error", field_errors=errors)
+        cleaned["operator_name"] = cleaned["operator_name"] or self.store.organization_title(organization)
+        with self.store.db.transaction():
+            duplicate, distance = importing.find_duplicate(cleaned, self.store.planning_records())
+            report_id = insert_report(
+                self.store.db,
+                db_values(cleaned),
+                organization_id=organization,
+                user_id=user["id"],
+                status="submitted",
+                source="form",
+                possible_duplicate_of_id=duplicate["id"] if duplicate else None,
+                possible_duplicate_distance_m=distance,
             )
-        timestamp = now_iso()
-        report_id = self.store.execute(
-            "INSERT INTO aed_aedreport (organization_id, location_name, notes, data_date, status, created, created_by_id,"
-            " modified, modified_by_id) VALUES (?, ?, ?, ?, 'submitted', ?, ?, ?, ?)",
-            (
-                organization,
-                attrs["location_name"],
-                attrs["notes"],
-                attrs["data_date"],
-                timestamp,
-                user["id"],
-                timestamp,
-                user["id"],
-            ),
-        )
         return HTTPStatus.CREATED, {"data": serialize_report(self.store.reports(user, report_id)[0], self._api_url())}
+
+    def _import_reports(self):
+        user = self._user()
+        attrs = attributes_of(self._json(), "aed_report_import")
+        file_format = attrs.get("format")
+        content = attrs.get("content")
+        dry_run = attrs.get("dry_run", True)
+        errors = {}
+        if file_format not in importing.FORMATS:
+            errors["format"] = "Dozwolone: " + ", ".join(importing.FORMATS) + "."
+        if not isinstance(content, str) or not content.strip():
+            errors["content"] = "Dołącz zawartość pliku."
+        if not isinstance(dry_run, bool):
+            errors["dry_run"] = "Dozwolone wartości: true, false."
+        organization, org_error = self._resolve_organization(user, attrs.get("organization"))
+        if org_error:
+            errors["organization"] = org_error
+        if errors:
+            raise ApiError(HTTPStatus.UNPROCESSABLE_ENTITY, "Field error", field_errors=errors)
+
+        import_id = str(uuid.uuid4())
+        try:
+            rows = importing.parse_file(content, file_format)
+        except importing.ImportFileError as exc:
+            return HTTPStatus.CREATED, import_response(import_id, "rejected", file_format, file_error=str(exc))
+        with self.store.lock:
+            plan = importing.plan_import(
+                rows,
+                self.store.planning_records(organization),
+                self.store.planning_records(),
+                self.store.organization_title(organization),
+            )
+            if plan["errors"]:
+                status = "rejected"
+            elif dry_run:
+                status = "dry_run"
+            else:
+                status = "imported"
+                self._apply_import(plan, organization, user)
+        return HTTPStatus.CREATED, import_response(import_id, status, file_format, plan)
+
+    def _apply_import(self, plan, organization, user):
+        """Apply planned actions in one transaction; in-file duplicates point to the record created for that row."""
+        db = self.store.db
+        created_for_row = {}
+        timestamp = now_iso()
+        with db.transaction():
+            for action in plan["actions"]:
+                if action["action"] == "unchanged":
+                    continue
+                duplicate_id = action["duplicate_of"]
+                if action["duplicate_of_row"] is not None:
+                    duplicate_id = created_for_row.get(action["duplicate_of_row"])
+                values = db_values(action["values"])
+                if action["action"] == "create":
+                    created_for_row[action["row"]] = insert_report(
+                        db,
+                        values,
+                        organization_id=organization,
+                        user_id=user["id"],
+                        status="submitted",
+                        source="import",
+                        timestamp=timestamp,
+                        possible_duplicate_of_id=duplicate_id,
+                        possible_duplicate_distance_m=action["duplicate_distance_m"],
+                    )
+                else:  # update: changed data goes back to verification
+                    assignments = ", ".join(f"{name} = ?" for name in values)
+                    db.execute(
+                        f"UPDATE aed_aedreport SET {assignments}, source = 'import', status = 'submitted',"
+                        " verification_comment = '', verified_by_id = NULL, verified_at = NULL,"
+                        " possible_duplicate_of_id = ?, possible_duplicate_distance_m = ?, modified = ?, modified_by_id = ?"
+                        " WHERE id = ?",
+                        list(values.values())
+                        + [duplicate_id, action["duplicate_distance_m"], timestamp, user["id"], action["record_id"]],
+                    )
+
+    def _export_devices(self):
+        """Public unified dataset: verified records only, columns of the reference data scope."""
+        query = parse_qs(urlsplit(self.path).query)
+        file_format = (query.get("format") or [""])[0]
+        if file_format and file_format not in EXPORT_TYPES:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "400 Bad Request", "Dozwolone formaty: csv, json, geojson.")
+        rows = [importing.export_record(record) for record in self.store.verified_records()]
+        data_date = datetime.date.today().isoformat()
+        if not file_format:  # JSON:API for API clients
+            body = {
+                "data": [{"type": "aed_device", "id": row["id"], "attributes": row} for row in importing.to_json(rows)],
+                "meta": {"count": len(rows), "data_date": data_date},
+            }
+            return HTTPStatus.OK, body
+        if file_format == "csv":
+            payload = importing.to_csv(rows).encode("utf-8")
+        elif file_format == "geojson":
+            payload = json.dumps(importing.to_geojson(rows, data_date), ensure_ascii=False, indent=1).encode("utf-8")
+        else:
+            payload = json.dumps(importing.to_json(rows), ensure_ascii=False, indent=1).encode("utf-8")
+        headers = {
+            "Content-Type": EXPORT_TYPES[file_format],
+            "Content-Disposition": f'attachment; filename="aed-{data_date}.{file_format}"',
+            "Access-Control-Allow-Origin": "*",  # open data
+        }
+        return HTTPStatus.OK, payload, headers
 
     def _verify_report(self, report_id):
         user = self._user(require_roles=("admin",))
@@ -310,8 +525,8 @@ class Handler(SimpleHTTPRequestHandler):
         return HTTPStatus.ACCEPTED, {"data": serialize_report(self.store.reports(user, report_id)[0], self._api_url())}
 
 
-def make_server(host, port, db_path, quiet=False):
-    handler = type("BoundHandler", (Handler,), {"store": Store(db_path)})
+def make_server(host, port, db_target, quiet=False, reset=False):
+    handler = type("BoundHandler", (Handler,), {"store": Store(db_target, reset=reset)})
     server = ThreadingHTTPServer((host, port), handler)
     server.quiet = quiet
     return server
@@ -321,13 +536,13 @@ def main():
     parser = argparse.ArgumentParser(description="AED prototype — standalone demo server")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8090)
-    parser.add_argument("--db", type=Path, default=DEFAULT_DB)
-    parser.add_argument("--reset", action="store_true", help="recreate the demo database")
+    parser.add_argument("--db", default=DEFAULT_DB, help="SQLite file path or postgresql:// URL (default: AED_DATABASE_URL)")
+    parser.add_argument("--reset", action="store_true", help="recreate the demo tables and data")
     args = parser.parse_args()
-    if args.reset and args.db.exists():
-        args.db.unlink()
-    server = make_server(args.host, args.port, args.db)
-    print(f"AED demo: http://{args.host}:{args.port}  (database: {args.db})  Ctrl+C to stop")
+    server = make_server(args.host, args.port, args.db, reset=args.reset)
+    where = args.db.split("@")[-1] if "://" in args.db else args.db  # never print the password
+    label = server.RequestHandlerClass.store.db.label
+    print(f"AED demo: http://{args.host}:{args.port}  (database: {label}, {where})  Ctrl+C to stop")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

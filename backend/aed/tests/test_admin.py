@@ -3,6 +3,7 @@ from django.test import Client
 from django.urls import reverse
 
 from mcod.aed.models import AedReport
+from mcod.aed.tests.utils import report_kwargs
 from mcod.organizations.factories import OrganizationFactory
 
 pytestmark = pytest.mark.django_db
@@ -18,8 +19,8 @@ def editor_admin_client(active_editor) -> Client:
 
 
 def test_editor_sees_only_own_institution_reports(active_editor, editor_admin_client):
-    AedReport.objects.create(organization=active_editor.organizations.get(), location_name="Własny AED")
-    AedReport.objects.create(organization=OrganizationFactory.create(), location_name="Obcy AED")
+    AedReport.objects.create(**report_kwargs(organization=active_editor.organizations.get(), location_name="Własny AED"))
+    AedReport.objects.create(**report_kwargs(organization=OrganizationFactory.create(), location_name="Obcy AED"))
     resp = editor_admin_client.get(reverse(CHANGELIST_URL))
     assert resp.status_code == 200
     content = resp.content.decode()
@@ -29,7 +30,7 @@ def test_editor_sees_only_own_institution_reports(active_editor, editor_admin_cl
 
 def test_editor_cannot_verify_report(active_editor, editor_admin_client):
     report = AedReport.objects.create(
-        organization=active_editor.organizations.get(), location_name="AED", status=AedReport.STATUS.submitted
+        **report_kwargs(organization=active_editor.organizations.get(), status=AedReport.STATUS.submitted)
     )
     editor_admin_client.post(reverse(CHANGELIST_URL), {"action": "mark_verified", "_selected_action": [report.pk]}, follow=True)
     report.refresh_from_db()
@@ -38,7 +39,7 @@ def test_editor_cannot_verify_report(active_editor, editor_admin_client):
 
 def test_admin_verifies_submitted_report(admin, django_admin_client):
     report = AedReport.objects.create(
-        organization=OrganizationFactory.create(), location_name="AED", status=AedReport.STATUS.submitted
+        **report_kwargs(organization=OrganizationFactory.create(), status=AedReport.STATUS.submitted)
     )
     resp = django_admin_client.post(
         reverse(CHANGELIST_URL), {"action": "mark_verified", "_selected_action": [report.pk]}, follow=True

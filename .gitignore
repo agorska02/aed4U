@@ -221,3 +221,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# AED prototype
+standalone/aed_demo.sqlite3
+CLAUDE.local.md

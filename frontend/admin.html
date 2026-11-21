@@ -6,6 +6,9 @@
   <title>Weryfikacja zgłoszeń AED – prototyp</title>
   <link rel="stylesheet" href="styles.css">
   <script src="config.js"></script>
+  <script src="aed-schema.js" defer></script>
+  <script src="aed-validator.js" defer></script>
+  <script src="aed-import.js" defer></script>
   <script src="api-mock.js" defer></script>
   <script src="app.js" defer></script>
   <script src="admin.js" defer></script>
@@ -23,12 +26,13 @@
 
   <header class="site-header site-header--admin">
     <div class="container site-header__inner">
-      <a class="site-header__brand" href="#">
+      <a class="site-header__brand" href="mapa.html">
         <span class="site-header__logo" aria-hidden="true"></span>
         <span>Panel Administratora <small>(prototyp)</small></span>
       </a>
       <nav aria-label="Menu główne">
         <ul class="site-nav">
+          <li><a href="mapa.html">Mapa AED</a></li>
           <li><a href="index.html">Zgłoś AED</a></li>
           <li><a href="admin.html" aria-current="page">Weryfikacja (admin)</a></li>
         </ul>
@@ -97,17 +101,29 @@
               <option value="rejected">Odrzucone</option>
             </select>
           </div>
+          <div class="field field--inline">
+            <label for="source-filter">Źródło</label>
+            <select id="source-filter">
+              <option value="">Wszystkie</option>
+              <option value="form">Formularz</option>
+              <option value="import">Import pliku</option>
+              <option value="api">Integracja (API)</option>
+            </select>
+          </div>
+          <div class="field field--inline">
+            <input type="checkbox" id="duplicate-filter">
+            <label for="duplicate-filter">Tylko możliwe duplikaty</label>
+          </div>
         </div>
-        <p id="reports-empty" class="hint" hidden>Brak zgłoszeń o wybranym statusie.</p>
+        <p id="reports-empty" class="hint" hidden>Brak zgłoszeń spełniających wybrane kryteria.</p>
         <div class="table-wrap">
           <table class="table" id="reports-table" hidden>
             <caption class="sr-only">Zgłoszenia AED do weryfikacji</caption>
             <thead>
               <tr>
-                <th scope="col">Lokalizacja</th>
-                <th scope="col">Instytucja</th>
+                <th scope="col">Miejsce</th>
+                <th scope="col">Instytucja i źródło</th>
                 <th scope="col">Dane na dzień</th>
-                <th scope="col">Uwagi</th>
                 <th scope="col">Status</th>
                 <th scope="col">Weryfikacja</th>
               </tr>
@@ -115,6 +131,20 @@
             <tbody id="reports-body"></tbody>
           </table>
         </div>
+      </section>
+
+      <section class="card" aria-labelledby="export-heading">
+        <h2 id="export-heading">Zbiór danych do publikacji</h2>
+        <p>
+          Ujednolicony zbiór ze wszystkich źródeł – tylko <strong>zweryfikowane</strong> rekordy, kolumny zgodne
+          z wzorcowym zakresem danych. Gotowy do dodania jako zasób w portalu dane.gov.pl.
+        </p>
+        <ul class="download-list">
+          <li><button type="button" class="btn btn--small btn--secondary" data-export="csv">Pobierz CSV</button> – RFC 4180, UTF-8</li>
+          <li><button type="button" class="btn btn--small btn--secondary" data-export="json">Pobierz JSON</button></li>
+          <li><button type="button" class="btn btn--small btn--secondary" data-export="geojson">Pobierz GeoJSON</button> – do map (WGS84)</li>
+        </ul>
+        <p class="hint">Publiczne API: <code>GET /aed-devices?format=csv|json|geojson</code> (bez logowania).</p>
       </section>
     </div>
   </main>

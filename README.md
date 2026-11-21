@@ -1,12 +1,20 @@
-# Zgłoś dostępność urządzenia AED – prototyp (HackNation)
+# Puls na mapie – zbieranie danych o defibrylatorach AED (HackNation)
 
-Prototyp podstrony portalu otwartych danych (backend `mcod`): **dostawcy danych** (edytorzy instytucji)
-zgłaszają lokalizację i dostępność automatycznych defibrylatorów zewnętrznych (AED), a **administrator
-portalu** weryfikuje zgłoszenia w Panelu Administratora.
+Akcja **„Puls na mapie”** (*Udostępnij. Uratuj.*) – prototyp mechanizmu, który zbiera w portalu
+dane.gov.pl dane o defibrylatorach AED od wszystkich dysponentów w **jednym, jednolitym zbiorze**:
 
-> Status: **szkielet**. Formularz ma pola tymczasowe (`location_name`, `notes`, `data_date`);
-> docelowe pola AED i kolumny w bazie zostaną dodane w kolejnym kroku – patrz
-> [Wymagania dla docelowych pól](#wymagania-dla-docelowych-pól).
+- **wzorcowy zakres danych** – [`schema/`](schema/README.md): Table Schema, słowniki, szablon CSV;
+- **dostawcy danych** (edytorzy instytucji) zgłaszają urządzenia przez podstronę
+  „Zgłoś dostępność urządzenia AED”, formularz jest generowany ze schematu;
+- dysponenci z własnym rejestrem **importują plik** CSV/JSON/GeoJSON – z podglądem błędów, aktualizacją
+  po `source_id` i wykrywaniem **duplikatów między źródłami** (15 m + podobna nazwa lub adres);
+- **administrator portalu** weryfikuje zgłoszenia i duplikaty, a zweryfikowane rekordy tworzą
+  **jeden publiczny zbiór** (`GET /aed-devices?format=csv|json|geojson`) gotowy do dane.gov.pl;
+- **służby ratunkowe i każdy z nas** korzystają z publicznej **mapy z listą** (`mapa.html`): „dostępne teraz”
+  (z godzin w składni OSM), najbliższe urządzenia (geolokalizacja na żądanie), trasa, pobranie danych.
+
+> Etapy: ✅ 1. zakres danych · ✅ 2. model, walidacja, formularz · ✅ 3. import z wielu źródeł,
+> deduplikacja, eksport CSV/JSON/GeoJSON · ✅ 4. widok publiczny z mapą · ⏳ 5. logotyp i księga znaku.
 
 Ten katalog zawiera **wyłącznie dodatki** – kod portalu nie jest jego częścią. Prototyp działa
 **samodzielnie** (dwa tryby demo), a moduł `backend/aed/` jest gotowym wzorem wdrożenia do portalu.
@@ -15,17 +23,29 @@ Ten katalog zawiera **wyłącznie dodatki** – kod portalu nie jest jego częś
 
 | Tryb | Jak uruchomić | Dane | Wymaga |
 |---|---|---|---|
-| **Demo w przeglądarce** | otwórz `frontend/index.html` albo opublikuj katalog `frontend/` na dowolnym hostingu statycznym (np. GitHub Pages) | atrapa API (`api-mock.js`), dane w `localStorage` tej przeglądarki | nic |
+| **Demo w przeglądarce** | otwórz `frontend/mapa.html` (widok publiczny) lub `frontend/index.html` (dostawca) albo opublikuj katalog `frontend/` na dowolnym hostingu statycznym (np. GitHub Pages) | atrapa API (`api-mock.js`), dane w `localStorage` tej przeglądarki | nic |
 | **Demo z serwerem** | `python standalone/server.py` → http://127.0.0.1:8090 | baza SQLite (`standalone/`) | Python 3.8+ (bez pakietów) |
+| **Demo z PostgreSQL** | `docker compose -f standalone/docker-compose.yml up -d`, potem `python standalone/server.py --db postgresql://aed:aed@127.0.0.1:5433/aed_demo` | PostgreSQL 16 w kontenerze | Docker + `psycopg2` |
 | **Portal** (wzór wdrożenia) | patrz [Uruchomienie w portalu](#uruchomienie-w-portalu) | PostgreSQL portalu | repozytorium `mcod` + Docker |
+
+Mapa i wybór punktu w formularzu ładują Leaflet z cdnjs (z SRI) i kafelki OpenStreetMap – wymagają
+internetu. Bez niego mapa się nie pokazuje, a lista urządzeń i cała reszta działa dalej.
 
 Konta demo: `dostawca@demo.local` / `Demo123!` (instytucja A), `dostawca2@demo.local` / `Demo123!`
 (instytucja B), `admin@demo.local` / `Admin123!` (administrator). Scenariusz pokazu:
 
-1. Zaloguj się jako **dostawca A** na `index.html`, wyślij zgłoszenie – status *Przesłane do weryfikacji*.
-2. Przejdź do **Weryfikacja (admin)** (`admin.html`), zaloguj się jako **admin**, zatwierdź lub odrzuć z komentarzem.
-3. Wróć na `index.html` jako dostawca A – widać nowy status i komentarz.
-4. Zaloguj się jako **dostawca B** – widać tylko zgłoszenia instytucji B.
+0. Otwórz **Mapa AED** (`mapa.html`) bez logowania: lista + mapa zweryfikowanych urządzeń, filtry
+   „dostępne teraz”, „24/7”, „dla dzieci”, „Pokaż najbliższe”; na telefonie przełącznik Lista/Mapa.
+1. Zaloguj się jako **dostawca A** na `index.html`, wyślij zgłoszenie (położenie możesz wskazać na mapie)
+   – status *Przesłane do weryfikacji*.
+2. W sekcji **Import** pobierz „plik do pokazu z błędami” i sprawdź go – raport wskazuje wiersz, kolumnę
+   i błąd, nic nie jest zapisywane. Potem sprawdź „poprawny” plik: 2 nowe urządzenia, 1 aktualizacja
+   (ten sam `source_id`) i 1 możliwy duplikat urządzenia zgłoszonego przez instytucję B → **Importuj**.
+3. Przejdź do **Weryfikacja (admin)** (`admin.html`), zaloguj się jako **admin**: filtr „Tylko możliwe
+   duplikaty”, zatwierdź lub odrzuć z komentarzem; na dole pobierz zbiór CSV/JSON/GeoJSON.
+4. Wróć na `index.html` jako dostawca A – widać nowy status i komentarz.
+5. Zaloguj się jako **dostawca B** – widać tylko zgłoszenia instytucji B.
+6. Zatwierdzone przez admina urządzenia pojawiają się na **Mapie AED** i w pobieranym zbiorze.
 
 Tryb wybiera `frontend/config.js` (`mode: "mock"` domyślnie). Serwer demo podaje własny `config.js`
 (`mode: "api"`), a w portalu `integration/config.portal.js` podmienia go przez wolumen – frontend we
@@ -62,9 +82,12 @@ w `backend/aed/admin.py`. API wymaga roli `editor` lub `admin` (`login_required`
 
 | Katalog | Zawartość |
 |---|---|
-| `backend/aed/` | Aplikacja Django `mcod.aed` w konwencjach portalu (wzór: `mcod/suggestions`): model `AedReport` z obiegiem weryfikacji, migracja, `rules.py`, admin, deserializer/serializer (marshmallow, JSON:API), widok Falcon `GET`/`POST /aed-reports`, testy API i admina. |
-| `frontend/` | Podstrona (HTML + CSS + JS, bez zależności): `index.html` – dostawca (logowanie, formularz, zgłoszenia instytucji ze statusem); `admin.html` – weryfikacja (w trybach demo); `config.js` – wybór trybu; `api-mock.js` – atrapa API. |
-| `standalone/` | Serwer demo: biblioteka standardowa Pythona + SQLite, to samo API co moduł portalu; testy. Szczegóły: [standalone/README.md](standalone/README.md). |
+| `schema/` | **Wzorcowy zakres danych**: `aed.schema.json` (Frictionless Table Schema), słowniki CSV, szablon i przykład CSV. Jedyne źródło reguł – czytają je walidatory, formularz i admin. |
+| `backend/aed/` | Aplikacja Django `mcod.aed` w konwencjach portalu (wzór: `mcod/suggestions`): model `AedReport` (kolumny ze schematu, źródło, możliwy duplikat, obieg weryfikacji), migracja, `rules.py`, admin (sekcje ze schematu, filtr duplikatów), deserializer/serializer generowane ze schematu, widoki Falcon `GET`/`POST /aed-reports`, `POST /aed-report-imports`, `GET /aed-devices`; w czystym Pythonie (bez Django): **`validation.py`** – walidator schematu, **`importing.py`** – parsowanie plików, plan importu, duplikaty, eksport; testy. |
+| `frontend/` | Podstrona (HTML + CSS + JS, bez zależności): `index.html` – dostawca (formularz generowany ze schematu, zgłoszenia instytucji ze statusem i szczegółami); `admin.html` – weryfikacja (w trybach demo); `aed-validator.js` / `aed-import.js` – te same reguły co `validation.py` / `importing.py`; `provider-import.js` – import pliku; `location-picker.js` – wybór punktu na mapie; `mapa.html` + `map.js` – widok publiczny (mapa i lista); `aed-hours.js` – „dostępne teraz” z `opening_hours`; `demo/` – pliki do pokazu importu; `aed-schema.js` – schemat dla przeglądarki (generowany); `config.js` – wybór trybu; `api-mock.js` – atrapa API. |
+| `tests/` | Testy walidatorów i importu – wspólne przypadki `validation_cases.json` i `import_cases.json` uruchamiane dla Pythona i JS (JS w headless Chrome/Edge), godzin dostępności (`opening_hours_cases.json`) oraz spójności plików schematu i eksportu. |
+| `tools/` | `build_frontend_schema.py` – generuje `frontend/aed-schema.js` po zmianie schematu. |
+| `standalone/` | Serwer demo: biblioteka standardowa Pythona + SQLite albo PostgreSQL (`db.py`, `schema.sql` / `schema.postgres.sql`, `docker-compose.yml`), to samo API co moduł portalu; testy na obu bazach. Szczegóły: [standalone/README.md](standalone/README.md). |
 | `integration/` | Podłączenie do portalu: `portal.patch` (`INSTALLED_APPS`, trasy API, pozycja w menu panelu), `docker-compose.hackathon.yml` (wolumeny + serwer podstrony), `config.portal.js` (tryb portal). Szczegóły: [integration/README.md](integration/README.md). |
 
 ## Architektura
@@ -74,7 +97,9 @@ przeglądarka ──► aed-frontend (nginx, :8090)
                    ├── /        → frontend/ (statyczne pliki)
                    └── /api/*   → mcod-local-api:8000 (Falcon)
                                      ├── POST /auth/login  → JWT (konto portalu)
-                                     └── GET|POST /aed-reports → mcod.aed → PostgreSQL (aed_aedreport)
+                                     ├── GET|POST /aed-reports → mcod.aed → PostgreSQL (aed_aedreport)
+                                     ├── POST /aed-report-imports  (plik dysponenta: podgląd / import)
+                                     └── GET /aed-devices?format=…  (publiczny zbiór, bez logowania)
 Panel Administratora (:8001) → „Zgłoszenia AED”: /aed/aedreport/
 ```
 
@@ -95,29 +120,23 @@ Sprawdzone z: [Standardy otwartości danych](https://dane.gov.pl/pl/knowledgebas
 | Nazwy zasobów: rzeczownik l. mn., małe litery, łączniki, bez polskich znaków | Std. API 3 | `/aed-reports` | ✅ |
 | Wersja w URL | Std. API 9 | trasa dodana przed prefiksem `/{api_version}` (np. `/1.4/aed-reports`) | ✅ |
 | Kody HTTP 201/401/403/422, opis błędu w treści | Std. API 10 | standardowe handlery portalu, `source.pointer` dla pól | ✅ |
-| Daty ISO 8601 (`yyyy-mm-dd`) | Std. techniczny 3 | `DateField`/`DateTimeField`, `<input type="date">` | ✅ |
-| „Dane na dzień” – wskazanie aktualności danych | Przewodnik 5.2.5, Std. bezpieczeństwa 5, Std. prawny 3.3 | `data_date` (domyślnie dziś) | ✅ |
+| Daty ISO 8601 (`yyyy-mm-dd`) | Std. techniczny 3 | typ `date` w schemacie, `DateField`, `<input type="date">` | ✅ |
+| „Dane na dzień” – wskazanie aktualności danych | Przewodnik 5.2.5, Std. bezpieczeństwa 5, Std. prawny 3.3 | `data_date` (wymagane, domyślnie dziś) | ✅ |
 | Obieg szkic / weryfikacja, rozliczalność zmian | Przewodnik 4.1.11, 5.2.6 | `status`, `verified_by/at`, `created_by/modified_by` | ✅ |
 | Sanityzacja treści od użytkowników | konwencja repo | `SanitizedCharField` / `SanitizedTextField` | ✅ |
-| Dostępność cyfrowa (WCAG) | Przewodnik 14 | etykiety, `aria-live`, `aria-invalid`, focus, skip link, kontrast, `lang="pl"` | ✅ podstawy |
-| Adres w odrębnych polach; zalecany adres uniwersalny (TERYT), wybór ze słownika | Std. techniczny 3.2 | – | ⏳ docelowe pola |
-| Współrzędne WGS84, pola liczbowe, kropka dziesiętna (wizualizacja na mapie) | Przewodnik 10, Std. techniczny 3 | – | ⏳ docelowe pola |
-| Granularność – bez łączenia kilku danych w jednym polu | Std. techniczny 3 | `notes` tylko na uwagi | ⏳ docelowe pola |
-| Minimalizacja danych osobowych | Przewodnik 15, Std. bezpieczeństwa | brak danych osobowych w polach zgłoszenia | ✅ (pilnować przy nowych polach) |
-| Publikacja jako zbiór: CSV RFC 4180 / JSON-LD, licencja, aktualizacja | Std. techniczny 4–5, Std. prawny | – | ⏳ poza szkieletem |
+| Dostępność cyfrowa (WCAG 2.2) | Przewodnik 14 | etykiety i podpowiedzi powiązane z polami, podsumowanie błędów z linkami do pól, `aria-invalid`, `autocomplete` (1.3.5), pola Tak/Nie jako `fieldset`, cele ≥ 24 px (2.5.8), focus, skip link, kontrast, `lang="pl"`; mapa ma równoważną listę tekstową, wynik filtrowania ogłaszany (`role="status"`), geolokalizacja tylko na żądanie, punkt na mapie wybieralny też klawiaturą („Użyj środka mapy”) lub przez wpisanie współrzędnych; układ bez przewijania w poziomie przy 320–390 px (1.4.10) | ✅ (pełny audyt w etapie 5) |
+| Adres w odrębnych polach, kody TERYT | Std. techniczny 3.2 | `street_type`/`street`/`street_number`/`postal_code`/`city`…, `teryt_terc`, `teryt_simc`, słowniki | ✅ (wybór z rejestru TERYT – TODO) |
+| Współrzędne WGS84, pola liczbowe, kropka dziesiętna (wizualizacja na mapie) | Przewodnik 10, Std. techniczny 3 | `latitude`/`longitude` (`DecimalField`, 6 miejsc, zakres Polski) | ✅ |
+| Granularność – bez łączenia kilku danych w jednym polu | Std. techniczny 3 | adres, położenie, dostępność, urządzenie, kontakt w osobnych polach; godziny w składni OSM `opening_hours` | ✅ |
+| Telefon: 9 cyfr | Std. techniczny 3 | wzorzec `^[0-9]{9}$` | ✅ |
+| Minimalizacja danych osobowych | Przewodnik 15, Std. bezpieczeństwa | tylko kontakt instytucjonalny, bez kodów do szafek; opisy pól to przypominają | ✅ |
+| Publikacja jako zbiór w formatach czytelnych maszynowo | Std. techniczny 4–5 | `GET /aed-devices`: CSV (RFC 4180, UTF-8, `\r\n`), JSON, GeoJSON (WGS84); tylko rekordy zweryfikowane; „dane na dzień” w `meta`/`metadata` | ✅ (licencja i harmonogram aktualizacji – przy zakładaniu zbioru w portalu) |
+| Wiele źródeł w jednym zbiorze, wskazanie źródła | wyzwanie | import plików + formularz + API (`source`), `operator_name`, `source_id`, aktualizacja zamiast duplikatu, wykrywanie duplikatów między dysponentami | ✅ |
 | Tłumaczenie EN metadanych | Przewodnik 4.2, 5.3 | – | ⏳ poza szkieletem |
 
-### Wymagania dla docelowych pól
+### Zakres danych
 
-- **Adres** (wymóg): osobne pola – nazwy jak w `Organization`: `postal_code` (PNA), `city`, `street_type`
-  (cecha), `street`, `street_number`, `flat_number`; opcjonalnie `universal_address`
-  (adres uniwersalny, format `PNA|TERC|SIMC|SIMC|ULIC|x|y|nr|`). Najlepiej wybór ze słownika TERYT.
-- **Lokalizacja**: `latitude`, `longitude` jako `DecimalField` (WGS84); etykieta mapy = `location_name`.
-- **Dostępność**: osobne pola, np. `is_available_24h` (`true`/`false`), godziny w formacie `hh:mm`;
-  nie w polu tekstowym.
-- **Telefon** (jeśli potrzebny): 9 cyfr bez spacji; tylko kontakt instytucjonalny, bez imion i nazwisk.
-- Walidację formatów można oprzeć na regułach portalu (`mcod/lib/data_rules.py`: PNA, adres
-  uniwersalny, cecha adresu, telefon).
+Pełny opis pól, uzasadnienie i mapowanie na OpenStreetMap: [schema/README.md](schema/README.md).
 
 ## Uruchomienie w portalu
 
@@ -139,7 +158,15 @@ Testy (API – kontener `api`, admin – kontener domyślny):
 ```sh
 alias dc='docker compose -f docker-compose.local.yml -f hackathon/integration/docker-compose.hackathon.yml'
 dc run --rm mcod-local-tests-api -n1 --no-cov mcod/aed/tests/test_api.py
-dc run --rm mcod-local-tests -n1 --no-cov mcod/aed/tests/test_admin.py
+dc run --rm mcod-local-tests -n1 --no-cov mcod/aed/tests/test_admin.py mcod/aed/tests/test_schema.py
+```
+
+Testy prototypu (bez portalu, Python 3.8+):
+
+```sh
+python -m unittest discover -s tests        # walidatory Python + JS (JS: headless Chrome/Edge), pliki schematu
+python -m unittest discover -s standalone   # API serwera demo
+python tools/build_frontend_schema.py       # po każdej zmianie schema/aed.schema.json lub aed-example.csv
 ```
 
 ## Uproszczenia prototypu (TODO przed integracją z produkcją)
@@ -156,6 +183,11 @@ dc run --rm mcod-local-tests -n1 --no-cov mcod/aed/tests/test_admin.py
   Administratora, a `admin.html` pokazuje tylko link do niego. Pole `roles` w odpowiedzi logowania też
   występuje tylko w demo.
 - W trybach demo dostawca nie edytuje wysłanych zgłoszeń (w portalu: Panel Administratora).
+- Aktualizacja zweryfikowanego rekordu importem wraca do weryfikacji i do tego czasu znika z publicznego
+  zbioru. Docelowo warto publikować ostatnią zweryfikowaną wersję aż do ponownej weryfikacji.
+- Wykrywanie duplikatów porównuje każdy rekord ze wszystkimi (O(n²)) – wystarcza do kilkudziesięciu tysięcy
+  urządzeń; przy większej skali indeks przestrzenny (PostGIS / Elasticsearch `geo_distance`, jak w portalu).
+- Eksport w portalu jest endpointem; docelowo pliki zasobów generowałoby cyklicznie zadanie Celery.
 - Wygląd odwzorowuje styl portalu (kolory, układ, typografia) bez oficjalnych logotypów.
 
 ## Uwaga do kodu portalu (poza zakresem modułu)
