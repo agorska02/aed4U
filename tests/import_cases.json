@@ -4,7 +4,7 @@
   {
    "name": "valid CSV creates records",
    "format": "csv",
-   "content": "location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nHala sportowa,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,zoll,S1,2026-11-20\nSzkoła,przy wejściu,true,Kraków,Kraków,5,31-004,50.070000,19.937000,public,24/7,operational,zoll,S2,2026-11-20\n",
+   "content": "location_name,building_type,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nHala sportowa,sports_facility,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,zoll,S1,2026-11-20\nSzkoła,sports_facility,przy wejściu,true,Kraków,Kraków,5,31-004,50.070000,19.937000,public,24/7,operational,zoll,S2,2026-11-20\n",
    "expect": {
     "summary": {
      "rows": 2,
@@ -31,7 +31,7 @@
   {
    "name": "semicolon CSV and BOM",
    "format": "csv",
-   "content": "﻿location_name;location_description;indoor;commune;city;street_number;postal_code;latitude;longitude;access;opening_hours;device_status;manufacturer;serial_number;data_date\r\nHala sportowa;przy wejściu;true;Kraków;Kraków;5;31-004;50.061000;19.937000;public;24/7;operational;zoll;S1;2026-11-20\r\n",
+   "content": "﻿location_name;building_type;location_description;indoor;commune;city;street_number;postal_code;latitude;longitude;access;opening_hours;device_status;manufacturer;serial_number;data_date\r\nHala sportowa;sports_facility;przy wejściu;true;Kraków;Kraków;5;31-004;50.061000;19.937000;public;24/7;operational;zoll;S1;2026-11-20\r\n",
    "expect": {
     "summary": {
      "rows": 1,
@@ -42,7 +42,7 @@
   {
    "name": "row errors with line numbers",
    "format": "csv",
-   "content": "location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nHala sportowa,przy wejściu,true,Kraków,Kraków,5,31004,50.061000,19.937000,public,24/7,operational,zoll,S1,2026-11-20\nSzkoła,przy wejściu,true,Kraków,Kraków,5,31-004,50.07,19.937000,public,24/7,operational,zoll,,2026-11-20\nBasen,przy wejściu,true,Kraków,Kraków,5,31-004,50.08,19.937000,public,24/7,operational,zoll,S3,2026-11-20\n",
+   "content": "location_name,building_type,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nHala sportowa,sports_facility,przy wejściu,true,Kraków,Kraków,5,31004,50.061000,19.937000,public,24/7,operational,zoll,S1,2026-11-20\nSzkoła,sports_facility,przy wejściu,true,Kraków,Kraków,5,31-004,50.07,19.937000,public,24/7,operational,zoll,,2026-11-20\nBasen,sports_facility,przy wejściu,true,Kraków,Kraków,5,31-004,50.08,19.937000,public,24/7,operational,zoll,S3,2026-11-20\n",
    "expect": {
     "errors": [
      [
@@ -65,7 +65,7 @@
   {
    "name": "quoted value with comma and newline",
    "format": "csv",
-   "content": "location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\n\"Hala, sportowa\",\"przy wejściu,\nod parkingu\",true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,zoll,S1,2026-11-20\nBasen,przy wejściu,true,Kraków,Kraków,5,x,50.061000,19.937000,public,24/7,operational,zoll,S2,2026-11-20\n",
+   "content": "location_name,building_type,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\n\"Hala, sportowa\",sports_facility,\"przy wejściu,\nod parkingu\",true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,zoll,S1,2026-11-20\nBasen,sports_facility,przy wejściu,true,Kraków,Kraków,5,x,50.061000,19.937000,public,24/7,operational,zoll,S2,2026-11-20\n",
    "expect": {
     "errors": [
      [
@@ -82,7 +82,7 @@
   {
    "name": "unknown column rejects the file",
    "format": "csv",
-   "content": "location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date,kod_szafki\nHala sportowa,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,zoll,S1,2026-11-20,1234\n",
+   "content": "location_name,building_type,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date,kod_szafki\nHala sportowa,sports_facility,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,zoll,S1,2026-11-20,1234\n",
    "expect": {
     "file_error": true
    }
@@ -90,7 +90,7 @@
   {
    "name": "removed columns (source_id, TERYT) are unknown",
    "format": "csv",
-   "content": "teryt_terc,location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\n1261011,Hala sportowa,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,zoll,S1,2026-11-20\n",
+   "content": "teryt_terc,location_name,building_type,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\n1261011,Hala sportowa,sports_facility,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,zoll,S1,2026-11-20\n",
    "expect": {
     "file_error": true
    }
@@ -106,7 +106,7 @@
   {
    "name": "too many values in a row",
    "format": "csv",
-   "content": "location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nHala sportowa,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,zoll,S1,2026-11-20,x\n",
+   "content": "location_name,building_type,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nHala sportowa,sports_facility,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,zoll,S1,2026-11-20,x\n",
    "expect": {
     "file_error": true
    }
@@ -114,7 +114,7 @@
   {
    "name": "empty file",
    "format": "csv",
-   "content": "location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\n",
+   "content": "location_name,building_type,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\n",
    "expect": {
     "file_error": true
    }
@@ -122,12 +122,13 @@
   {
    "name": "same device of the own institution updates or keeps the record",
    "format": "csv",
-   "content": "location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nHala sportowa,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,zoll,S1,2026-11-20\nSzkoła,przy wejściu,true,Kraków,Kraków,5,31-004,50.070000,19.937000,public,Mo-Fr 08:00-16:00,operational,zoll,S2,2026-11-20\n",
+   "content": "location_name,building_type,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nHala sportowa,sports_facility,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,zoll,S1,2026-11-20\nSzkoła,sports_facility,przy wejściu,true,Kraków,Kraków,5,31-004,50.070000,19.937000,public,Mo-Fr 08:00-16:00,operational,zoll,S2,2026-11-20\n",
    "own": [
     {
      "id": 10,
      "operator_name": "Instytucja testowa",
      "location_name": "Hala sportowa",
+     "building_type": "sports_facility",
      "location_description": "przy wejściu",
      "indoor": true,
      "commune": "Kraków",
@@ -148,6 +149,7 @@
      "id": 11,
      "operator_name": "Instytucja testowa",
      "location_name": "Szkoła",
+     "building_type": "sports_facility",
      "location_description": "przy wejściu",
      "indoor": true,
      "commune": "Kraków",
@@ -191,12 +193,13 @@
   {
    "name": "device moved to another place keeps its record (same serial number)",
    "format": "csv",
-   "content": "location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nBasen miejski,przy wejściu,true,Kraków,Kraków,9,31-004,50.080000,19.937000,public,24/7,operational,zoll,S1,2026-11-20\n",
+   "content": "location_name,building_type,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nBasen miejski,sports_facility,przy wejściu,true,Kraków,Kraków,9,31-004,50.080000,19.937000,public,24/7,operational,zoll,S1,2026-11-20\n",
    "own": [
     {
      "id": 10,
      "operator_name": "Instytucja testowa",
      "location_name": "Hala sportowa",
+     "building_type": "sports_facility",
      "location_description": "przy wejściu",
      "indoor": true,
      "commune": "Kraków",
@@ -232,12 +235,13 @@
   {
    "name": "serial numbers are compared without case, spaces and dashes",
    "format": "csv",
-   "content": "location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nHala sportowa,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,zoll,ab1234,2026-11-20\n",
+   "content": "location_name,building_type,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nHala sportowa,sports_facility,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,zoll,ab1234,2026-11-20\n",
    "own": [
     {
      "id": 10,
      "operator_name": "Instytucja testowa",
      "location_name": "Hala sportowa",
+     "building_type": "sports_facility",
      "location_description": "przy wejściu",
      "indoor": true,
      "commune": "Kraków",
@@ -265,7 +269,7 @@
   {
    "name": "two rows with the same device",
    "format": "csv",
-   "content": "location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nHala sportowa,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,zoll,S1,2026-11-20\nBasen,przy wejściu,true,Kraków,Kraków,5,31-004,50.080000,19.937000,public,24/7,operational,zoll,s-1,2026-11-20\n",
+   "content": "location_name,building_type,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nHala sportowa,sports_facility,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,zoll,S1,2026-11-20\nBasen,sports_facility,przy wejściu,true,Kraków,Kraków,5,31-004,50.080000,19.937000,public,24/7,operational,zoll,s-1,2026-11-20\n",
    "expect": {
     "errors": [
      [
@@ -282,12 +286,13 @@
   {
    "name": "device reported by another institution is rejected",
    "format": "csv",
-   "content": "location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nBasen,przy wejściu,true,Kraków,Kraków,5,31-004,50.080000,19.937000,public,24/7,operational,zoll,S1,2026-11-20\n",
+   "content": "location_name,building_type,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nBasen,sports_facility,przy wejściu,true,Kraków,Kraków,5,31-004,50.080000,19.937000,public,24/7,operational,zoll,S1,2026-11-20\n",
    "all": [
     {
      "id": 99,
      "operator_name": "Instytucja testowa",
      "location_name": "Hala sportowa",
+     "building_type": "sports_facility",
      "location_description": "przy wejściu",
      "indoor": true,
      "commune": "Kraków",
@@ -321,12 +326,13 @@
   {
    "name": "the same serial number of another manufacturer is another device",
    "format": "csv",
-   "content": "location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nBasen,przy wejściu,true,Kraków,Kraków,5,31-004,50.080000,19.937000,public,24/7,operational,philips,S1,2026-11-20\n",
+   "content": "location_name,building_type,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nBasen,sports_facility,przy wejściu,true,Kraków,Kraków,5,31-004,50.080000,19.937000,public,24/7,operational,philips,S1,2026-11-20\n",
    "all": [
     {
      "id": 99,
      "operator_name": "Instytucja testowa",
      "location_name": "Hala sportowa",
+     "building_type": "sports_facility",
      "location_description": "przy wejściu",
      "indoor": true,
      "commune": "Kraków",
@@ -354,7 +360,7 @@
   {
    "name": "other manufacturer requires its name",
    "format": "csv",
-   "content": "location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nHala sportowa,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,other,S1,2026-11-20\n",
+   "content": "location_name,building_type,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nHala sportowa,sports_facility,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,other,S1,2026-11-20\n",
    "expect": {
     "errors": [
      [
@@ -367,12 +373,13 @@
   {
    "name": "near record of another institution with similar name is a possible duplicate",
    "format": "csv",
-   "content": "location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nHala sportowa MOSiR,przy wejściu,true,Kraków,Kraków,5,31-004,50.061040,19.937000,public,24/7,operational,zoll,S7,2026-11-20\n",
+   "content": "location_name,building_type,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nHala sportowa MOSiR,sports_facility,przy wejściu,true,Kraków,Kraków,5,31-004,50.061040,19.937000,public,24/7,operational,zoll,S7,2026-11-20\n",
    "all": [
     {
      "id": 99,
      "operator_name": "Instytucja testowa",
      "location_name": "Hala Sportowa",
+     "building_type": "sports_facility",
      "location_description": "przy wejściu",
      "indoor": true,
      "commune": "Kraków",
@@ -408,12 +415,13 @@
   {
    "name": "similar name 100 m away is not a duplicate",
    "format": "csv",
-   "content": "location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nHala sportowa,przy wejściu,true,Kraków,Kraków,5,31-004,50.061900,19.937000,public,24/7,operational,zoll,S7,2026-11-20\n",
+   "content": "location_name,building_type,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nHala sportowa,sports_facility,przy wejściu,true,Kraków,Kraków,5,31-004,50.061900,19.937000,public,24/7,operational,zoll,S7,2026-11-20\n",
    "all": [
     {
      "id": 99,
      "operator_name": "Instytucja testowa",
      "location_name": "Hala sportowa",
+     "building_type": "sports_facility",
      "location_description": "przy wejściu",
      "indoor": true,
      "commune": "Kraków",
@@ -448,12 +456,13 @@
   {
    "name": "same address with a different name is a possible duplicate",
    "format": "csv",
-   "content": "location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nUrząd Gminy,przy wejściu,true,Kraków,Kraków,5,31-004,50.061050,19.937000,public,24/7,operational,zoll,S7,2026-11-20\n",
+   "content": "location_name,building_type,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nUrząd Gminy,sports_facility,przy wejściu,true,Kraków,Kraków,5,31-004,50.061050,19.937000,public,24/7,operational,zoll,S7,2026-11-20\n",
    "all": [
     {
      "id": 99,
      "operator_name": "Instytucja testowa",
      "location_name": "Biblioteka",
+     "building_type": "sports_facility",
      "location_description": "przy wejściu",
      "indoor": true,
      "commune": "Kraków",
@@ -485,12 +494,13 @@
   {
    "name": "different name and address nearby is not a duplicate",
    "format": "csv",
-   "content": "location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nUrząd Gminy,przy wejściu,true,Kraków,Kraków,7,31-004,50.061050,19.937000,public,24/7,operational,zoll,S7,2026-11-20\n",
+   "content": "location_name,building_type,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nUrząd Gminy,sports_facility,przy wejściu,true,Kraków,Kraków,7,31-004,50.061050,19.937000,public,24/7,operational,zoll,S7,2026-11-20\n",
    "all": [
     {
      "id": 99,
      "operator_name": "Instytucja testowa",
      "location_name": "Biblioteka",
+     "building_type": "sports_facility",
      "location_description": "przy wejściu",
      "indoor": true,
      "commune": "Kraków",
@@ -522,7 +532,7 @@
   {
    "name": "rows of different devices at one place inside one file",
    "format": "csv",
-   "content": "location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nHala sportowa,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,zoll,S1,2026-11-20\nHala Sportowa!,przy wejściu,true,Kraków,Kraków,5,31-004,50.061020,19.937000,public,24/7,operational,zoll,S2,2026-11-20\n",
+   "content": "location_name,building_type,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nHala sportowa,sports_facility,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,zoll,S1,2026-11-20\nHala Sportowa!,sports_facility,przy wejściu,true,Kraków,Kraków,5,31-004,50.061020,19.937000,public,24/7,operational,zoll,S2,2026-11-20\n",
    "expect": {
     "summary": {
      "create": 2,
@@ -545,9 +555,33 @@
    }
   },
   {
+   "name": "building type is required",
+   "format": "csv",
+   "content": "location_name,building_type,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nHala sportowa,,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,zoll,S1,2026-11-20\n",
+   "expect": {
+    "errors": [
+     [
+      2,
+      "building_type"
+     ]
+    ],
+    "summary": {
+     "invalid": 1
+    }
+   }
+  },
+  {
+   "name": "removed notes column is unknown",
+   "format": "csv",
+   "content": "location_name,building_type,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date,notes\nHala sportowa,sports_facility,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,zoll,S1,2026-11-20,uwaga\n",
+   "expect": {
+    "file_error": true
+   }
+  },
+  {
    "name": "JSON list of records",
    "format": "json",
-   "content": "[{\"location_name\": \"Hala sportowa\", \"location_description\": \"przy wejściu\", \"indoor\": true, \"commune\": \"Kraków\", \"city\": \"Kraków\", \"street_number\": \"5\", \"postal_code\": \"31-004\", \"latitude\": 50.061, \"longitude\": 19.937, \"access\": \"public\", \"opening_hours\": \"24/7\", \"device_status\": \"operational\", \"manufacturer\": \"zoll\", \"serial_number\": \"S1\", \"data_date\": \"2026-11-20\"}]",
+   "content": "[{\"location_name\": \"Hala sportowa\", \"building_type\": \"sports_facility\", \"location_description\": \"przy wejściu\", \"indoor\": true, \"commune\": \"Kraków\", \"city\": \"Kraków\", \"street_number\": \"5\", \"postal_code\": \"31-004\", \"latitude\": 50.061, \"longitude\": 19.937, \"access\": \"public\", \"opening_hours\": \"24/7\", \"device_status\": \"operational\", \"manufacturer\": \"zoll\", \"serial_number\": \"S1\", \"data_date\": \"2026-11-20\"}]",
    "expect": {
     "summary": {
      "rows": 1,
@@ -558,7 +592,7 @@
   {
    "name": "GeoJSON FeatureCollection",
    "format": "geojson",
-   "content": "{\"type\": \"FeatureCollection\", \"features\": [{\"type\": \"Feature\", \"geometry\": {\"type\": \"Point\", \"coordinates\": [19.937, 50.061]}, \"properties\": {\"location_name\": \"Hala sportowa\", \"location_description\": \"przy wejściu\", \"indoor\": true, \"commune\": \"Kraków\", \"city\": \"Kraków\", \"street_number\": \"5\", \"postal_code\": \"31-004\", \"access\": \"public\", \"opening_hours\": \"24/7\", \"device_status\": \"operational\", \"manufacturer\": \"zoll\", \"serial_number\": \"S1\", \"data_date\": \"2026-11-20\"}}]}",
+   "content": "{\"type\": \"FeatureCollection\", \"features\": [{\"type\": \"Feature\", \"geometry\": {\"type\": \"Point\", \"coordinates\": [19.937, 50.061]}, \"properties\": {\"location_name\": \"Hala sportowa\", \"building_type\": \"sports_facility\", \"location_description\": \"przy wejściu\", \"indoor\": true, \"commune\": \"Kraków\", \"city\": \"Kraków\", \"street_number\": \"5\", \"postal_code\": \"31-004\", \"access\": \"public\", \"opening_hours\": \"24/7\", \"device_status\": \"operational\", \"manufacturer\": \"zoll\", \"serial_number\": \"S1\", \"data_date\": \"2026-11-20\"}}]}",
    "expect": {
     "summary": {
      "rows": 1,
@@ -601,12 +635,13 @@
   {
    "name": "operator and public contact from the file are ignored (institution profile wins)",
    "format": "csv",
-   "content": "operator_name,contact_phone,location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nInny dysponent,999999999,Hala sportowa,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,zoll,S1,2026-11-20\n",
+   "content": "operator_name,contact_phone,location_name,building_type,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date\nInny dysponent,999999999,Hala sportowa,sports_facility,przy wejściu,true,Kraków,Kraków,5,31-004,50.061000,19.937000,public,24/7,operational,zoll,S1,2026-11-20\n",
    "own": [
     {
      "id": 10,
      "operator_name": "Instytucja testowa",
      "location_name": "Hala sportowa",
+     "building_type": "sports_facility",
      "location_description": "przy wejściu",
      "indoor": true,
      "commune": "Kraków",

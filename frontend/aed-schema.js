@@ -118,6 +118,66 @@ window.AED_SCHEMA = {
    "x-group": "place"
   },
   {
+   "name": "building_type",
+   "title": "Typ budynku",
+   "description": "Rodzaj obiektu",
+   "type": "string",
+   "constraints": {
+    "required": true,
+    "enum": [
+     "school",
+     "shop",
+     "swimming_pool",
+     "workplace",
+     "airport",
+     "golf_course",
+     "gym",
+     "home",
+     "hotel",
+     "sports_facility",
+     "church",
+     "shopping_centre",
+     "public_venue",
+     "station",
+     "terminal",
+     "other"
+    ]
+   },
+   "x-enumLabels": {
+    "school": "Szkoła",
+    "shop": "Sklep",
+    "swimming_pool": "Basen",
+    "workplace": "Miejsce pracy",
+    "airport": "Lotnisko",
+    "golf_course": "Pole golfowe",
+    "gym": "Sala gimnastyczna",
+    "home": "Dom",
+    "hotel": "Hotel",
+    "sports_facility": "Obiekt sportowy",
+    "church": "Budynek kościoła",
+    "shopping_centre": "Centrum handlowe",
+    "public_venue": "Lokal publiczny",
+    "station": "Stacja",
+    "terminal": "Terminal",
+    "other": "Inny typ budynku"
+   },
+   "x-group": "place"
+  },
+  {
+   "name": "building_type_other",
+   "title": "Rodzaj obiektu",
+   "description": "Wypełnij tylko, gdy wybrano „Inny typ budynku”, np. „przychodnia”, „urząd”.",
+   "type": "string",
+   "constraints": {
+    "minLength": 2,
+    "maxLength": 100
+   },
+   "x-requiredIf": {
+    "building_type": "other"
+   },
+   "x-group": "place"
+  },
+  {
    "name": "location_description",
    "title": "Dokładne miejsce",
    "description": "Gdzie dokładnie szukać urządzenia, np. „hol główny, przy recepcji”, „ściana zewnętrzna od strony parkingu”.",
@@ -539,16 +599,6 @@ window.AED_SCHEMA = {
    "description": "Data i czas weryfikacji rekordu przez administratora zbioru, ISO 8601 z czasem UTC, np. 2026-11-21T10:15:00Z.",
    "type": "datetime",
    "x-system": true
-  },
-  {
-   "name": "notes",
-   "title": "Uwagi",
-   "type": "string",
-   "constraints": {
-    "maxLength": 3000
-   },
-   "x-osm": "note",
-   "x-group": "meta"
   }
  ]
 };
@@ -559,6 +609,8 @@ window.AED_EXAMPLES = [
   "operator_regon": "000000000",
   "source": "import",
   "location_name": "[PRZYKŁAD] Urząd Miasta – budynek A",
+  "building_type": "workplace",
+  "building_type_other": "",
   "location_description": "hol główny, przy punkcie informacji",
   "indoor": "true",
   "floor": "0",
@@ -586,8 +638,7 @@ window.AED_EXAMPLES = [
   "contact_phone": "120000000",
   "contact_email": "aed@example.org",
   "data_date": "2026-11-15",
-  "verified_at": "2026-11-18T09:30:00Z",
-  "notes": "Rekord przykładowy – dane fikcyjne."
+  "verified_at": "2026-11-18T09:30:00Z"
  },
  {
   "id": "7a2b9c4d-1e3f-4a5b-8c6d-2e4f6a8b0c22",
@@ -595,6 +646,8 @@ window.AED_EXAMPLES = [
   "operator_regon": "",
   "source": "form",
   "location_name": "[PRZYKŁAD] Park Miejski – wejście główne",
+  "building_type": "other",
+  "building_type_other": "park",
   "location_description": "szafka na słupie przy bramie od strony alei",
   "indoor": "false",
   "floor": "",
@@ -622,8 +675,7 @@ window.AED_EXAMPLES = [
   "contact_phone": "",
   "contact_email": "",
   "data_date": "2026-11-10",
-  "verified_at": "2026-11-12T14:05:00Z",
-  "notes": "Rekord przykładowy – dane fikcyjne."
+  "verified_at": "2026-11-12T14:05:00Z"
  },
  {
   "id": "b1c3d5e7-f9a1-4b3c-9d5e-7f9a1b3c5d33",
@@ -631,6 +683,8 @@ window.AED_EXAMPLES = [
   "operator_regon": "00000000000000",
   "source": "import",
   "location_name": "[PRZYKŁAD] Dworzec Główny",
+  "building_type": "station",
+  "building_type_other": "",
   "location_description": "hala kasowa, obok kas biletowych",
   "indoor": "true",
   "floor": "0",
@@ -658,8 +712,7 @@ window.AED_EXAMPLES = [
   "contact_phone": "580000000",
   "contact_email": "dworzec@example.org",
   "data_date": "2026-11-01",
-  "verified_at": "2026-11-03T08:00:00Z",
-  "notes": "Rekord przykładowy – dane fikcyjne."
+  "verified_at": "2026-11-03T08:00:00Z"
  },
  {
   "id": "c4e6a8b0-2d4f-4e6a-8b0c-4e6a8b0c2d44",
@@ -667,6 +720,8 @@ window.AED_EXAMPLES = [
   "operator_regon": "",
   "source": "import",
   "location_name": "[PRZYKŁAD] Hala sportowa",
+  "building_type": "sports_facility",
+  "building_type_other": "",
   "location_description": "korytarz przy szatniach, 1. piętro",
   "indoor": "true",
   "floor": "1",
@@ -694,8 +749,7 @@ window.AED_EXAMPLES = [
   "contact_phone": "710000000",
   "contact_email": "",
   "data_date": "2026-11-19",
-  "verified_at": "2026-11-20T11:45:00Z",
-  "notes": "Rekord przykładowy – dane fikcyjne. Elektrody po terminie, wymiana zamówiona."
+  "verified_at": "2026-11-20T11:45:00Z"
  },
  {
   "id": "e9f1a3b5-c7d9-4f1a-a3b5-c7d9e1f3a555",
@@ -703,6 +757,8 @@ window.AED_EXAMPLES = [
   "operator_regon": "",
   "source": "form",
   "location_name": "[PRZYKŁAD] Świetlica wiejska",
+  "building_type": "public_venue",
+  "building_type_other": "",
   "location_description": "ściana zewnętrzna przy drzwiach wejściowych",
   "indoor": "false",
   "floor": "",
@@ -730,7 +786,6 @@ window.AED_EXAMPLES = [
   "contact_phone": "",
   "contact_email": "",
   "data_date": "2026-11-20",
-  "verified_at": "2026-11-21T07:10:00Z",
-  "notes": "Rekord przykładowy – dane fikcyjne. Miejscowość bez ulic."
+  "verified_at": "2026-11-21T07:10:00Z"
  }
 ];

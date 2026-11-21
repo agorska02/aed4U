@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS aed_aedreport (
     operator_regon VARCHAR(14) NOT NULL DEFAULT '',
     -- place
     location_name VARCHAR(300) NOT NULL,
+    building_type VARCHAR(20) NOT NULL,               -- code from schema/dictionaries/building_types.csv
+    building_type_other VARCHAR(100) NOT NULL DEFAULT '', -- kind of building when building_type = 'other'
     location_description VARCHAR(300) NOT NULL,
     indoor INTEGER NOT NULL CHECK (indoor IN (0, 1)),
     floor INTEGER,
@@ -79,7 +81,6 @@ CREATE TABLE IF NOT EXISTS aed_aedreport (
     internal_contact_phone VARCHAR(9) NOT NULL DEFAULT '',  -- administrator only, never published
     -- currency
     data_date TEXT NOT NULL,
-    notes TEXT NOT NULL DEFAULT '',
     -- duplicate detection across sources (set on create/import, decided by the administrator)
     possible_duplicate_of_id INTEGER REFERENCES aed_aedreport (id) ON DELETE SET NULL,
     possible_duplicate_distance_m INTEGER,

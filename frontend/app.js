@@ -227,8 +227,8 @@
     if (!banner || !config.demo) return;
     banner.hidden = false;
     $("demo-mode").textContent = config.mode === "mock"
-      ? "dane zapisywane tylko w tej przeglądarce"
-      : "dane w bazie " + (config.database || "SQLite") + " serwera demo";
+      ? "dane zapisywane tylko w tej sesji"
+      : "";
     var resetBtn = $("demo-reset");
     if (config.mode === "mock") {
       resetBtn.hidden = false;

@@ -98,7 +98,7 @@ class DemoServerTest(unittest.TestCase):
     # --- provider ---
     def test_provider_creates_submitted_report_for_own_institution(self):
         token = self.login(PROVIDER_A)
-        status, body = self.create(token, notes="Przy kasach", data_date="2026-11-01", indoor=False, latitude=50.1)
+        status, body = self.create(token, access_notes="Przy kasach", data_date="2026-11-01", indoor=False, latitude=50.1)
         self.assertEqual(status, 201, body)
         attrs = body["data"]["attributes"]
         self.assertEqual(attrs["status"], "submitted")
@@ -217,12 +217,12 @@ class DemoServerTest(unittest.TestCase):
         return self.request("POST", "/api/aed-report-imports", payload, token)
 
     def csv_file(self, *rows):
-        header = "location_name,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date"
+        header = "location_name,building_type,location_description,indoor,commune,city,street_number,postal_code,latitude,longitude,access,opening_hours,device_status,manufacturer,serial_number,data_date"
         return "\n".join([header] + list(rows)) + "\n"
 
     @staticmethod
     def csv_row(name="Basen miejski", lat="50.080000", lon="19.950000", postal="31-004", hours="24/7", serial="SN-1"):
-        return f"{name},hol,true,Kraków,Kraków,3,{postal},{lat},{lon},public,{hours},operational,zoll,{serial},2026-11-20"
+        return f"{name},sports_facility,hol,true,Kraków,Kraków,3,{postal},{lat},{lon},public,{hours},operational,zoll,{serial},2026-11-20"
 
     def reports_named(self, token, name):
         reports = self.request("GET", "/api/aed-reports", token=token)[1]["data"]

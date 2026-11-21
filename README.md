@@ -201,7 +201,7 @@ python tools/build_frontend_schema.py       # po każdej zmianie schema/aed.sche
 - **Moduł portalu (`backend/aed`) nie ma jeszcze** reguły „dysponent i kontakt z profilu instytucji” ani pola
   `internal_contact_phone`, a wciąż ma usunięte z zakresu pole `source_id` (demo: `standalone/`, `frontend/` jest
   aktualne), ma też usunięte z zakresu kody TERYT (`teryt_terc`, `teryt_simc`), nie ma słownika producentów,
-  `manufacturer_other`, `serial_number` ani unikalności urządzenia – do dopisania przy integracji: kolumny w modelu i migracji, wypełnianie z `Organization` (`title`, `regon`, `tel`, `email`), ukrycie pola przed
+  `manufacturer_other`, `serial_number`, unikalności urządzenia ani typu budynku (`building_type`), wciąż ma `notes` – do dopisania przy integracji: kolumny w modelu i migracji, wypełnianie z `Organization` (`title`, `regon`, `tel`, `email`), ukrycie pola przed
   edytorami w API i eksporcie, endpoint z profilem instytucji dla formularza.
 - Wygląd odwzorowuje styl portalu (kolory, układ, typografia) bez oficjalnych logotypów.
 

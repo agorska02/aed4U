@@ -196,6 +196,53 @@
       "errors": []
     },
     {
+      "name": "building type is required",
+      "changes": {
+        "building_type": ""
+      },
+      "errors": [
+        "building_type"
+      ]
+    },
+    {
+      "name": "building type from the dictionary only",
+      "changes": {
+        "building_type": "szpital"
+      },
+      "errors": [
+        "building_type"
+      ]
+    },
+    {
+      "name": "other building type requires its kind",
+      "changes": {
+        "building_type": "other"
+      },
+      "errors": [
+        "building_type_other"
+      ]
+    },
+    {
+      "name": "other building type with its kind",
+      "changes": {
+        "building_type": "other",
+        "building_type_other": "przychodnia"
+      },
+      "errors": []
+    },
+    {
+      "name": "building kind only with other",
+      "changes": {
+        "building_type_other": "przychodnia"
+      },
+      "errors": [
+        "building_type_other"
+      ],
+      "messages": {
+        "building_type_other": "Wypełnij tylko, gdy wybrano „Inny typ budynku”."
+      }
+    },
+    {
       "name": "manufacturer is required",
       "changes": {
         "manufacturer": ""

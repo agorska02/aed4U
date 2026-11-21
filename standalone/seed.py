@@ -21,7 +21,7 @@ ROOT = HERE.parent
 # SQLite file by default; AED_DATABASE_URL=postgresql://… (or --db) switches to PostgreSQL.
 DEFAULT_DB = os.environ.get("AED_DATABASE_URL") or str(HERE / "aed_demo.sqlite3")
 EXAMPLES = ROOT / "schema" / "aed-example.csv"
-SCHEMA_VERSION = 7  # an older demo database is recreated automatically
+SCHEMA_VERSION = 8  # an older demo database is recreated automatically
 
 sys.path.insert(0, str(ROOT / "backend"))
 from aed import importing  # noqa: E402
