@@ -17,6 +17,99 @@ python standalone/server.py --port 9000 --db /tmp/aed.sqlite3
 python -m unittest discover -s standalone   # testy (28 na SQLite; 28 kolejnych na PostgreSQL – patrz niżej)
 ```
 
+### Docker krok po kroku (serwer + PostgreSQL, bez instalowania Pythona)
+
+**1. Przygotowanie (tylko za pierwszym razem).** Zainstaluj i uruchom Docker Desktop (status „Running”),
+potem sprawdź w terminalu (PowerShell albo Git Bash):
+
+```sh
+docker --version
+docker compose version
+```
+
+**2. Zwolnij port 8090.** Jeśli działa lokalny serwer (`python standalone/server.py …`), zatrzymaj go
+klawiszami Ctrl+C – inaczej Docker zgłosi błąd „ports are not available”.
+
+**3. Przejdź do katalogu `hackathon/`** – wszystkie polecenia poniżej uruchamiaj z niego.
+
+**4. Zbuduj i uruchom:**
+
+```sh
+docker compose -f standalone/docker-compose.yml up --build -d
+```
+
+`--build` buduje obraz serwera (za pierwszym razem ok. minuty), `-d` uruchamia kontenery w tle. Najpierw
+startuje baza `aed-postgres`, a serwer `aed-server` dopiero wtedy, gdy baza jest gotowa. Przy starcie
+serwer sam zakłada tabele i wczytuje dane demo.
+
+**5. Sprawdź, czy działa:**
+
+```sh
+docker compose -f standalone/docker-compose.yml ps
+```
+
+Obie usługi mają status `Up`, serwer po kilku sekundach także `(healthy)`.
+
+**6. Otwórz w przeglądarce:**
+
+| Strona | Adres |
+|---|---|
+| Mapa publiczna | http://127.0.0.1:8090/mapa.html |
+| Zgłaszanie AED (dostawca) | http://127.0.0.1:8090/index.html |
+| Weryfikacja (admin) | http://127.0.0.1:8090/admin.html |
+
+| Konto demo | E-mail | Hasło |
+|---|---|---|
+| Dostawca A | `dostawca@demo.local` | `Demo123!` |
+| Dostawca B | `dostawca2@demo.local` | `Demo123!` |
+| Administrator | `admin@demo.local` | `Admin123!` |
+
+Baner u góry strony pokazuje „PostgreSQL”.
+
+**7. Logi (opcjonalnie):**
+
+```sh
+docker compose -f standalone/docker-compose.yml logs -f aed-server
+```
+
+Ctrl+C zamyka tylko podgląd logów – serwer działa dalej.
+
+**8. Po zmianach w kodzie** frontendu albo serwera przebuduj obraz (zawiera kopię plików) i odśwież stronę
+przez Ctrl+F5:
+
+```sh
+docker compose -f standalone/docker-compose.yml up --build -d
+```
+
+**9. Zatrzymanie:**
+
+```sh
+docker compose -f standalone/docker-compose.yml down       # stop, dane zostają (wolumen aed-pgdata)
+docker compose -f standalone/docker-compose.yml down -v    # stop i usunięcie wszystkich danych
+```
+
+**Powrót do danych demo:** przycisk „Przywróć dane demo” na stronie albo `down -v`, a potem znowu `up -d`
+(dane demo wczytają się same).
+
+| Objaw | Co zrobić |
+|---|---|
+| `ports are not available … 8090` | Port zajmuje inny program, najczęściej lokalny `server.py` – zatrzymaj go (krok 2). |
+| `Cannot connect to the Docker daemon` / `error during connect` | Uruchom Docker Desktop i poczekaj na status „Running”. |
+| Strona pokazuje stary wygląd | Przebuduj obraz (krok 8) i odśwież przez Ctrl+F5. |
+| Serwer nie startuje | Sprawdź logi (krok 7). |
+
+**Wersja bez PostgreSQL (SQLite w kontenerze):**
+
+```sh
+docker build -f standalone/Dockerfile -t aed-demo .
+docker run --rm -p 127.0.0.1:8090:8090 -v aed-sqlite:/data aed-demo    # Ctrl+C zatrzymuje
+```
+
+Dane zostają w wolumenie `aed-sqlite`.
+
+Obraz (`Dockerfile`, budowany z katalogu `hackathon/`) zawiera tylko serwer, wspólne moduły
+`backend/aed/validation.py` i `importing.py`, `schema/` i `frontend/`.
+
 ### PostgreSQL
 
 ```sh

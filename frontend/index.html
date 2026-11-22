@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
         integrity="sha512-h9FcoyWjHcOcmEVkxOfTLnmZFWIH0iZhZT1H2TbOq55xssQGEJHEaIm+PgoUaZbRvQTNTluNOEfb1ZRy6D3BOw=="
         crossorigin="anonymous" referrerpolicy="no-referrer">
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
   <script src="config.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"
@@ -21,6 +22,7 @@
   <script src="app.js" defer></script>
   <script src="provider-import.js" defer></script>
   <script src="location-picker.js" defer></script>
+  <script src="tabs.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Przejdź do treści</a>
@@ -36,7 +38,7 @@
   <header class="site-header">
     <div class="container site-header__inner">
       <a class="site-header__brand" href="mapa.html">
-        <span class="site-header__logo" aria-hidden="true"></span>
+        <img class="site-header__logo" src="logo.svg" alt="" width="56" height="48">
         <span>Portal otwartych danych <small>(prototyp)</small></span>
       </a>
       <nav aria-label="Menu główne">
@@ -99,9 +101,19 @@
       </form>
     </section>
 
-    <!-- Step 2: report form + provider's reports -->
+    <!-- Step 2: tabs with the report form, the file import and the provider's reports -->
     <div id="app-section" hidden>
-      <section class="card" aria-labelledby="form-heading">
+      <div class="tabs" role="tablist" aria-label="Panel dostawcy danych" data-tabs>
+        <button type="button" role="tab" class="tabs__tab" id="tab-nowe" data-tab="nowe" aria-controls="panel-nowe"
+                aria-selected="true">Nowe zgłoszenie</button>
+        <button type="button" role="tab" class="tabs__tab" id="tab-import" data-tab="import" aria-controls="panel-import"
+                aria-selected="false" tabindex="-1">Import z pliku</button>
+        <button type="button" role="tab" class="tabs__tab" id="tab-zgloszenia" data-tab="zgloszenia"
+                aria-controls="panel-zgloszenia" aria-selected="false" tabindex="-1">Zgłoszenia mojej instytucji
+          <span id="reports-count" class="tabs__count"></span></button>
+      </div>
+
+      <section class="card card--tab" id="panel-nowe" role="tabpanel" aria-labelledby="tab-nowe">
         <h2 id="form-heading">Nowe zgłoszenie</h2>
         <p class="hint">Pola oznaczone <span aria-hidden="true">*</span><span class="sr-only">gwiazdką</span> są wymagane.</p>
 
@@ -125,7 +137,7 @@
         </form>
       </section>
 
-      <section class="card" aria-labelledby="import-heading">
+      <section class="card card--tab" id="panel-import" role="tabpanel" aria-labelledby="tab-import" hidden>
         <h2 id="import-heading">Import wielu urządzeń z pliku</h2>
         <p class="hint">
           Masz już rejestr urządzeń? Prześlij plik zgodny z wzorcowym zakresem danych – arkusz Excela (XLSX,
@@ -160,7 +172,7 @@
         <button type="button" class="btn btn--primary" id="import-confirm" hidden>Importuj</button>
       </section>
 
-      <section class="card card--wide" aria-labelledby="reports-heading">
+      <section class="card card--wide card--tab" id="panel-zgloszenia" role="tabpanel" aria-labelledby="tab-zgloszenia" hidden>
         <h2 id="reports-heading">Zgłoszenia mojej instytucji</h2>
         <p id="reports-empty" class="hint" hidden>Brak zgłoszeń.</p>
         <div class="table-wrap">

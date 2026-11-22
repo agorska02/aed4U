@@ -1,6 +1,7 @@
-# PostgreSQL for the standalone AED demo (optional — the demo also runs on SQLite without any setup).
+# Standalone AED demo in Docker: the server (frontend + API, standalone/Dockerfile) on PostgreSQL.
 #
-#   docker compose -f standalone/docker-compose.yml up -d
+#   docker compose -f standalone/docker-compose.yml up --build -d      # then open http://127.0.0.1:8090
+#   docker compose -f standalone/docker-compose.yml up -d aed-postgres  # only the database, server run with Python:
 #   python standalone/server.py --db postgresql://aed:aed@127.0.0.1:5433/aed_demo
 #
 # Demo credentials only; the port is bound to localhost. Data survive restarts in the `aed-pgdata` volume
@@ -26,6 +27,21 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
+
+  aed-server:
+    build:
+      context: ..
+      dockerfile: standalone/Dockerfile
+    image: aed-demo
+    container_name: aed-server
+    environment:
+      AED_DATABASE_URL: postgresql://aed:aed@aed-postgres:5432/aed_demo
+    ports:
+      - "127.0.0.1:8090:8090"
+    depends_on:
+      aed-postgres:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   aed-pgdata:

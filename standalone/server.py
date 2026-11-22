@@ -14,6 +14,7 @@ done in the Administration Panel).
 
 Database: SQLite file (default, standard library only) or PostgreSQL (`--db postgresql://…` or the
 AED_DATABASE_URL environment variable; needs psycopg2) — see db.py and docker-compose.yml.
+Docker: standalone/Dockerfile (server image) and docker-compose.yml (server + PostgreSQL).
 
 Usage: python standalone/server.py [--port 8090] [--db PATH_OR_POSTGRES_URL] [--reset]
 NOT for production: demo accounts, no rate limiting, no HTTPS.
