@@ -14,7 +14,7 @@ window.AED_SCHEMA = {
   {
    "name": "operator",
    "title": "Dysponent urządzenia",
-   "description": "Dysponent to Twoja instytucja – nazwa i REGON pochodzą z jej profilu w portalu."
+   "description": "Nazwa i REGON pochodzą z jej profilu w portalu."
   },
   {
    "name": "place",
@@ -222,7 +222,7 @@ window.AED_SCHEMA = {
   {
    "name": "voivodeship",
    "title": "Województwo",
-   "description": "Nazwa województwa małymi literami, zgodnie ze słownikiem dictionaries/voivodeships.csv.",
+   "description": "Nazwa województwa",
    "type": "string",
    "constraints": {
     "enum": [

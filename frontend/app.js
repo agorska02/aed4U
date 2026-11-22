@@ -388,6 +388,22 @@
     "latitude", "longitude", "internal_contact_phone"];
   var PLACEHOLDERS = { latitude: "np. 50.061389", longitude: "np. 19.938333", postal_code: "np. 31-004" };
 
+  // The form is a wizard: each step shows some schema sections (x-groups); the last one reviews everything.
+  var STEPS = [
+    { title: "Miejsce", groups: ["operator", "place"] },
+    { title: "Adres i położenie", groups: ["address", "position"] },
+    { title: "Dostępność", groups: ["access"] },
+    { title: "Urządzenie", groups: ["device"] },
+    { title: "Kontakt i aktualność", groups: ["contact", "meta"] },
+    { title: "Sprawdź i wyślij", review: true }
+  ];
+  var REVIEW_STEP = STEPS.length - 1;
+  var BASE_TITLE = document.title;
+  var currentStep = 0;
+  var furthestStep = 0;
+  var hoursPicker = null;
+  var institutionProfile = null;
+
   // optional elements: the page may not show the admin panel link or the demo note
   var adminLink = $("admin-link");
   if (adminLink && config.adminPanelUrl) adminLink.href = config.adminPanelUrl;
@@ -679,6 +695,7 @@
   function renderReports(items) {
     var body = $("reports-body");
     body.textContent = "";
+    if ($("reports-count")) $("reports-count").textContent = "(" + items.length + ")";
     $("reports-empty").hidden = items.length > 0;
     $("reports-table").hidden = items.length === 0;
     items.forEach(function (item) {
@@ -790,7 +807,10 @@
           applyDefaults();
           furthestStep = 0;
           goToStep(0, false);
-          showStatus("Dziękujemy! Zgłoszenie zostało przesłane do weryfikacji.", "success");
+          showStatus("Dziękujemy! Zgłoszenie zostało przesłane do weryfikacji. ", "success");
+          if ($("tab-zgloszenia")) { // provider page with tabs: point to the list
+            $("global-status").appendChild(el("a", { href: "#zgloszenia", text: "Zobacz zgłoszenia mojej instytucji" }));
+          }
           $("global-status").scrollIntoView();
           loadReports();
         } else if (res.status === 422) {

@@ -1,0 +1,11 @@
+# Build context for standalone/Dockerfile: the image copies only the files it needs, this keeps the context small.
+**/__pycache__
+**/*.py[cod]
+**/*.sqlite3
+.git
+.env
+integration
+tests
+tools
+backend/aed/tests
+backend/aed/migrations

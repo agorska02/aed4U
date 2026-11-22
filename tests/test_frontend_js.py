@@ -60,8 +60,10 @@ var exported = AedImport.toCsv(AED_EXAMPLES.map(function (row) {
 }));
 var hours = DATA.hours.status.map(function (c) { return AedHours.statusAt(c[0], new Date(c[1])); });
 var described = DATA.hours.describe.map(function (c) { return AedHours.describe(c[0]); });
+var always = DATA.hours.always.map(function (c) { return AedHours.isAlwaysOpen(c[0]); });
 RESULT = imports.then(function (imported) {  // XLSX files are read asynchronously
-  return {validation: validation, imports: imported, exported: exported, hours: hours, described: described};
+  return {validation: validation, imports: imported, exported: exported, hours: hours, described: described,
+    always: always};
 });
 """
 
