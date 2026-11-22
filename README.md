@@ -30,9 +30,6 @@ całą dobę albo dni robocze (lub każdy dzień osobno), sobota, niedziela i ś
 w godzinach (z opcjonalną przerwą), do tego opcjonalny sezon (od–do miesiąca). Formularz składa z tego wartość
 OSM `opening_hours`, np. `Mo-Fr 08:00-16:00; Sa,Su off; PH off` – ten sam format co w imporcie i zbiorze.
 
-> Etapy: ✅ 1. zakres danych · ✅ 2. model, walidacja, formularz · ✅ 3. import z wielu źródeł,
-> deduplikacja, eksport CSV/JSON/GeoJSON · ✅ 4. widok publiczny z mapą · ⏳ 5. logotyp i księga znaku.
-
 Ten katalog zawiera **wyłącznie dodatki** – kod portalu nie jest jego częścią. Prototyp działa
 **samodzielnie** (dwa tryby demo), a moduł `backend/aed/` jest gotowym wzorem wdrożenia do portalu.
 
@@ -163,7 +160,7 @@ Pełny opis pól, uzasadnienie i mapowanie na OpenStreetMap: [schema/README.md](
 Z katalogu głównego portalu, przy działającym stacku (`/mcod-run`):
 
 ```sh
-git apply hackathon/integration/portal.patch
+git apply aed4U/integration/portal.patch
 docker compose -f docker-compose.local.yml -f hackathon/integration/docker-compose.hackathon.yml \
   run --rm mcod-local-run python manage.py migrate aed
 docker compose -f docker-compose.local.yml -f hackathon/integration/docker-compose.hackathon.yml \
@@ -190,35 +187,3 @@ python tools/build_frontend_schema.py       # po każdej zmianie schema/aed.sche
 python tools/build_xlsx_files.py           # po zmianie schematu lub frontend/demo/aed-import-demo.csv
 ```
 
-## Uproszczenia prototypu (TODO przed integracją z produkcją)
-
-- Gdy edytor należy do kilku instytucji, API wymaga pola `organization` – podstrona nie ma jeszcze
-  listy wyboru instytucji (pokazuje błąd z API).
-- Etykiety (`verbose_name`, komunikaty) są po angielsku jak w reszcie kodu; tłumaczenia PL trzeba
-  dopisać do `translations/system/pl/LC_MESSAGES/django.po` portalu.
-- Migracja `0001_initial.py` napisana ręcznie – po podłączeniu sprawdzić `makemigrations --check`
-  (robi to automatycznie entrypoint testów).
-- Token sesji podstrony trzymany w `sessionStorage` (znika po zamknięciu karty).
-- `admin.html` weryfikuje przez `PATCH /aed-reports/{id}` – rozszerzenie **tylko w trybach demo**
-  (atrapa, serwer SQLite). Moduł portalu go nie ma: w portalu weryfikacja odbywa się w Panelu
-  Administratora, a `admin.html` pokazuje tylko link do niego. Pole `roles` w odpowiedzi logowania też
-  występuje tylko w demo.
-- W trybach demo dostawca nie edytuje wysłanych zgłoszeń (w portalu: Panel Administratora).
-- Aktualizacja zweryfikowanego rekordu importem wraca do weryfikacji i do tego czasu znika z publicznego
-  zbioru. Docelowo warto publikować ostatnią zweryfikowaną wersję aż do ponownej weryfikacji.
-- Wykrywanie duplikatów porównuje każdy rekord ze wszystkimi (O(n²)) – wystarcza do kilkudziesięciu tysięcy
-  urządzeń; przy większej skali indeks przestrzenny (PostGIS / Elasticsearch `geo_distance`, jak w portalu).
-- Eksport w portalu jest endpointem; docelowo pliki zasobów generowałoby cyklicznie zadanie Celery.
-- **Moduł portalu (`backend/aed`) nie ma jeszcze** reguły „dysponent i kontakt z profilu instytucji” ani pola
-  `internal_contact_phone`, a wciąż ma usunięte z zakresu pole `source_id` (demo: `standalone/`, `frontend/` jest
-  aktualne), ma też usunięte z zakresu kody TERYT (`teryt_terc`, `teryt_simc`), nie ma słownika producentów,
-  `manufacturer_other`, `serial_number`, unikalności urządzenia ani typu budynku (`building_type`), wciąż ma `notes` – do dopisania przy integracji: kolumny w modelu i migracji, wypełnianie z `Organization` (`title`, `regon`, `tel`, `email`), ukrycie pola przed
-  edytorami w API i eksporcie, endpoint z profilem instytucji dla formularza.
-- Wygląd odwzorowuje styl portalu (kolory, układ, typografia) bez oficjalnych logotypów.
-
-## Uwaga do kodu portalu (poza zakresem modułu)
-
-`mcod/core/api/middleware_loader.py`: stała `FALCON_CSRF_MIDDLEWARE` wskazuje na
-`ContentTypeMiddleware` zamiast `CsrfMiddleware`, więc ochrona CSRF w API nie jest ładowana mimo
-`ENABLE_CSRF = True`. Uwierzytelnianie nagłówkiem `Authorization` jest na CSRF odporne, ale warto to
-zgłosić opiekunom portalu.
