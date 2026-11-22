@@ -1,5 +1,6 @@
 """Consistency of the reference data scope files (schema/)."""
 
+import base64
 import csv
 import json
 import unittest
@@ -10,11 +11,14 @@ from helpers import FRONTEND_DIR, SCHEMA_DIR
 helpers.setup_paths()
 
 import build_frontend_schema  # noqa: E402
+import build_xlsx_files  # noqa: E402
+from aed.importing import parse_file, xlsx_parts, xlsx_table  # noqa: E402
 from aed.validation import (  # noqa: E402
     field_names,
     institution_field_names,
     load_schema,
     published_field_names,
+    validate_record,
 )
 
 ENUM_DICTIONARIES = {
@@ -22,6 +26,8 @@ ENUM_DICTIONARIES = {
     "device_status": "device_status.csv",
     "pediatric": "pediatric.csv",
     "street_type": "street_types.csv",
+    "manufacturer": "manufacturers.csv",
+    "building_type": "building_types.csv",
 }
 
 
@@ -69,6 +75,28 @@ class SchemaFilesTest(unittest.TestCase):
         self.assertIn("internal_contact_phone", field_names(provider_only=True))
         for name in institution_field_names():
             self.assertNotIn(name, field_names(provider_only=True))
+
+    def test_generated_xlsx_files_are_up_to_date(self):
+        # compare unzipped parts: zip bytes may differ between zlib versions
+        for path, render in (
+            (SCHEMA_DIR / "aed-template.xlsx", build_xlsx_files.render_template),
+            (FRONTEND_DIR / "demo" / "aed-import-demo.xlsx", build_xlsx_files.render_demo),
+        ):
+            with self.subTest(path.name):
+                self.assertEqual(xlsx_parts(path.read_bytes()), xlsx_parts(render()), "run: python tools/build_xlsx_files.py")
+
+    def test_xlsx_template_has_the_template_columns(self):
+        header = xlsx_table(xlsx_parts((SCHEMA_DIR / "aed-template.xlsx").read_bytes()))[0][1]
+        self.assertEqual([header[i] for i in sorted(header)], read_csv(SCHEMA_DIR / "aed-template.csv")[0])
+
+    def test_xlsx_demo_file_has_the_values_of_the_csv_demo_file(self):
+        def cleaned(rows):
+            return [validate_record(record)[0] for _number, record in rows]
+
+        demo = FRONTEND_DIR / "demo"
+        from_csv = parse_file((demo / "aed-import-demo.csv").read_text(encoding="utf-8"), "csv")
+        from_xlsx = parse_file(base64.b64encode((demo / "aed-import-demo.xlsx").read_bytes()).decode("ascii"), "xlsx")
+        self.assertEqual(cleaned(from_xlsx), cleaned(from_csv))
 
     def test_generated_frontend_schema_is_up_to_date(self):
         current = (FRONTEND_DIR / "aed-schema.js").read_text(encoding="utf-8")

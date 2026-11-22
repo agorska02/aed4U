@@ -5,7 +5,7 @@ portal module (hackathon/backend/aed):
 - POST /api/auth/login, /api/auth/logout — JWT-like bearer token
 - GET /api/auth/user — the logged-in user with the profiles of their institutions
 - GET/POST /api/aed-reports — provider's reports / new report from the form
-- POST /api/aed-report-imports — CSV/JSON/GeoJSON file from a data provider (dry run or import)
+- POST /api/aed-report-imports — CSV/XLSX (base64)/JSON/GeoJSON file from a data provider (dry run or import)
 - GET /api/aed-devices?format=csv|json|geojson — public unified dataset (verified records only)
 AED attributes, validation, import and export rules come from the shared, Django-independent modules
 backend/aed/validation.py and backend/aed/importing.py (reference data scope: schema/aed.schema.json).

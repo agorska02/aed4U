@@ -273,7 +273,7 @@
       if (!attrs) return error(422, "Field error", "Nieprawidłowa struktura zapytania.");
       var dryRun = attrs.dry_run === undefined ? true : attrs.dry_run;
       var errors = {};
-      if (["csv", "json", "geojson"].indexOf(attrs.format) === -1) errors.format = "Dozwolone: csv, json, geojson.";
+      if (["csv", "xlsx", "json", "geojson"].indexOf(attrs.format) === -1) errors.format = "Dozwolone: csv, xlsx, json, geojson.";
       if (typeof attrs.content !== "string" || !attrs.content.trim()) errors.content = "Dołącz zawartość pliku.";
       if (typeof dryRun !== "boolean") errors.dry_run = "Dozwolone wartości: true, false.";
       var org = resolveOrganization(db, auth.user, attrs.organization);
@@ -291,19 +291,18 @@
           })
         } } });
       };
-      var rows;
-      try {
-        rows = window.AedImport.parseFile(attrs.content, attrs.format);
-      } catch (e) {
+      // XLSX is read asynchronously; request() resolves with the result of this promise
+      return window.AedImport.parseFileAsync(attrs.content, attrs.format).then(function (rows) {
+        var plan = planFor(db, rows, org.id);
+        if (plan.errors.length) return response("rejected", plan);
+        if (dryRun) return response("dry_run", plan);
+        applyPlan(db, plan, org.id, auth.user, "import");
+        saveDb(db);
+        return response("imported", plan);
+      }, function (e) {
         if (e instanceof window.AedImport.ImportFileError) return response("rejected", null, e.message);
         throw e;
-      }
-      var plan = planFor(db, rows, org.id);
-      if (plan.errors.length) return response("rejected", plan);
-      if (dryRun) return response("dry_run", plan);
-      applyPlan(db, plan, org.id, auth.user, "import");
-      saveDb(db);
-      return response("imported", plan);
+      });
     },
 
     // Public unified dataset: verified records only (format: "" = JSON:API, csv, json, geojson).

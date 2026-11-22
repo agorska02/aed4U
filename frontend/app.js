@@ -388,25 +388,11 @@
     "latitude", "longitude", "internal_contact_phone"];
   var PLACEHOLDERS = { latitude: "np. 50.061389", longitude: "np. 19.938333", postal_code: "np. 31-004" };
 
-  // The form is a wizard: each step shows some schema sections (x-groups); the last one reviews everything.
-  var STEPS = [
-    { title: "Miejsce", groups: ["operator", "place"] },
-    { title: "Adres i położenie", groups: ["address", "position"] },
-    { title: "Dostępność", groups: ["access"] },
-    { title: "Urządzenie", groups: ["device"] },
-    { title: "Kontakt i aktualność", groups: ["contact", "meta"] },
-    { title: "Sprawdź i wyślij", review: true }
-  ];
-  var REVIEW_STEP = STEPS.length - 1;
-  var BASE_TITLE = document.title;
-  var currentStep = 0;
-  var furthestStep = 0;
-  var hoursPicker = null;
-  var institutionProfile = null;
-
+  // optional elements: the page may not show the admin panel link or the demo note
   var adminLink = $("admin-link");
-  if (config.adminPanelUrl) adminLink.href = config.adminPanelUrl;
-  $("demo-resubmit-note").hidden = !config.demo;
+  if (adminLink && config.adminPanelUrl) adminLink.href = config.adminPanelUrl;
+  var resubmitNote = $("demo-resubmit-note");
+  if (resubmitNote) resubmitNote.hidden = !config.demo;
 
   // x-requiredIf fields are shown (and then required) only when the other field has the given value.
   function isRequired(field) {

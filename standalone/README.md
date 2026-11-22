@@ -63,7 +63,7 @@ z `../schema/aed-example.csv`. Baza w starszej wersji jest tworzona od nowa auto
 | `GET /api/auth/user` | edytor, admin | `200`, użytkownik i profile jego instytucji (`title`, `regon`, `phone`, `email`) – formularz pokazuje z nich dysponenta i kontakt |
 | `GET /api/aed-reports` | edytor, admin | `200`, zgłoszenia własnej instytucji (admin: wszystkie) |
 | `POST /api/aed-reports` | edytor, admin | `201`, status `submitted`; atrybuty = pola schematu (walidacja `backend/aed/validation.py`); błędy `422` – jeden na pole, z `source.pointer` |
-| `POST /api/aed-report-imports` | edytor, admin | `201`; plik CSV/JSON/GeoJSON w `content`, `dry_run` (domyślnie `true`); `status`: `dry_run` / `imported` / `rejected`, raport `summary`, `errors` (wiersz, kolumna, komunikat), `actions` (w tym duplikaty) |
+| `POST /api/aed-report-imports` | edytor, admin | `201`; plik CSV/JSON/GeoJSON (tekst) lub XLSX (base64, `format: "xlsx"`) w `content`, `dry_run` (domyślnie `true`); `status`: `dry_run` / `imported` / `rejected`, raport `summary`, `errors` (wiersz, kolumna, komunikat), `actions` (w tym duplikaty) |
 | `GET /api/aed-devices?format=csv\|json\|geojson` | każdy | publiczny zbiór – tylko rekordy zweryfikowane; bez `format` – JSON:API |
 | `GET /schema/…` | każdy | pliki wzorcowego zakresu danych (szablon, słowniki) |
 | `PATCH /api/aed-reports/{id}` | admin | `202`; **tylko w demo** – w portalu weryfikacja w Panelu Administratora |
