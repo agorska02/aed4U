@@ -37,7 +37,7 @@
   function matches(feature, query, filters, now) {
     var p = feature.properties;
     if (filters.openNow && availability(p, now) !== "open") return false;
-    if (filters.allDay && String(p.opening_hours).trim() !== "24/7") return false;
+    if (filters.allDay && !Hours.isAlwaysOpen(p.opening_hours)) return false;
     if (filters.publicOnly && p.access !== "public") return false;
     if (filters.pediatric && p.pediatric !== "yes") return false;
     if (!query) return true;

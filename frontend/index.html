@@ -16,6 +16,8 @@
   <script src="aed-validator.js" defer></script>
   <script src="aed-import.js" defer></script>
   <script src="api-mock.js" defer></script>
+  <script src="aed-hours.js" defer></script>
+  <script src="hours-picker.js" defer></script>
   <script src="app.js" defer></script>
   <script src="provider-import.js" defer></script>
   <script src="location-picker.js" defer></script>
@@ -103,15 +105,23 @@
         <h2 id="form-heading">Nowe zgłoszenie</h2>
         <p class="hint">Pola oznaczone <span aria-hidden="true">*</span><span class="sr-only">gwiazdką</span> są wymagane.</p>
 
+        <nav aria-label="Kroki formularza">
+          <ol id="form-steps" class="steps"></ol>
+        </nav>
+
         <div id="form-error-summary" class="error-summary" role="alert" tabindex="-1" hidden></div>
 
-        <!-- Fields are generated from the reference data scope (aed-schema.js) by app.js. -->
+        <!-- Fields are generated from the reference data scope (aed-schema.js) by app.js, one step at a time. -->
         <form id="aed-form" novalidate>
           <div id="aed-form-fields"></div>
 
           <p id="organization-error" class="field__error" hidden></p>
 
-          <button type="submit" class="btn btn--primary">Prześlij do weryfikacji</button>
+          <div class="form-nav">
+            <button type="button" id="step-back" class="btn btn--secondary">Wstecz</button>
+            <button type="button" id="step-next" class="btn btn--primary">Dalej</button>
+            <button type="submit" id="form-submit" class="btn btn--primary">Prześlij do weryfikacji</button>
+          </div>
         </form>
       </section>
 

@@ -401,7 +401,7 @@ window.AED_SCHEMA = {
   {
    "name": "opening_hours",
    "title": "Godziny dostępności",
-   "description": "Napisz kiedy urządzenie jest dostępne.",
+   "description": "Kiedy urządzenie jest dostępne – składnia OpenStreetMap opening_hours: 24/7; dni i godziny, np. Mo-Fr 08:00-16:00; Sa 09:00-13:00; Su off; święta: PH off lub PH 10:00-14:00; sezon: May-Sep 08:00-20:00 (poza sezonem niedostępne). W formularzu godziny wybiera się z listy.",
    "type": "string",
    "constraints": {
     "required": true,

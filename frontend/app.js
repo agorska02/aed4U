@@ -93,7 +93,8 @@
   }
 
   // Error summary at the top of a form: links move focus to the fields.
-  function showErrorSummary(summaryId, errors, labels) {
+  // reveal(name), when given, shows the field first (e.g. the wizard step it is on).
+  function showErrorSummary(summaryId, errors, labels, reveal) {
     var box = $(summaryId);
     var names = Object.keys(errors);
     box.textContent = "";
@@ -109,6 +110,7 @@
         var link = el("a", { href: "#" + targetId, text: text });
         link.addEventListener("click", function (event) {
           event.preventDefault();
+          if (reveal) reveal(name);
           $(targetId).focus();
         });
         item.appendChild(link);
@@ -454,6 +456,10 @@
   }
 
   function buildField(field) {
+    if (field.name === "opening_hours" && window.AedHoursPicker) {
+      hoursPicker = window.AedHoursPicker.create(field, { labelContent: labelContent });
+      return hoursPicker.node;
+    }
     var hintId = field.name + "-hint";
     var errorId = field.name + "-error";
     var short = SHORT_FIELDS.indexOf(field.name) !== -1;
@@ -497,8 +503,10 @@
 
   function buildForm() {
     var container = $("aed-form-fields");
+    var sections = {};
     window.AED_SCHEMA["x-groups"].forEach(function (group) {
       var section = el("fieldset", { className: "form-section" });
+      sections[group.name] = section;
       section.appendChild(el("legend", { text: group.title }));
       if (group.description) section.appendChild(el("p", { className: "hint", text: group.description }));
       var fromInstitution = INSTITUTION_FIELDS.filter(function (f) { return f["x-group"] === group.name; });
@@ -511,7 +519,119 @@
       FORM_FIELDS.forEach(function (field) {
         if (field["x-group"] === group.name) section.appendChild(buildField(field));
       });
-      container.appendChild(section);
+    });
+    STEPS.forEach(function (step, index) {
+      var node = el("section", { className: "form-step", id: "form-step-" + index, "aria-labelledby": "form-step-" + index + "-title" });
+      node.appendChild(el("h3", { id: "form-step-" + index + "-title", className: "form-step__title", tabindex: "-1",
+        text: "Krok " + (index + 1) + " z " + STEPS.length + ": " + step.title }));
+      if (step.review) {
+        node.appendChild(el("p", { className: "hint", text: "Sprawdź dane przed wysłaniem. Aby coś poprawić, użyj przycisku „Zmień”." }));
+        node.appendChild(el("div", { id: "form-review" }));
+      }
+      (step.groups || []).forEach(function (name) { if (sections[name]) node.appendChild(sections[name]); });
+      node.hidden = index !== 0;
+      container.appendChild(node);
+    });
+    if (hoursPicker) hoursPicker.attach();
+  }
+
+  function stepOf(name) {
+    var field = window.AED_SCHEMA.fields.filter(function (f) { return f.name === name; })[0];
+    if (!field) return REVIEW_STEP; // e.g. "organization"
+    for (var i = 0; i < STEPS.length; i++) {
+      if ((STEPS[i].groups || []).indexOf(field["x-group"]) !== -1) return i;
+    }
+    return REVIEW_STEP;
+  }
+
+  function renderProgress() {
+    var list = $("form-steps");
+    list.textContent = "";
+    STEPS.forEach(function (step, index) {
+      var item = el("li", { className: "steps__item" + (index === currentStep ? " steps__item--current" : index < currentStep ? " steps__item--done" : "") });
+      var node;
+      if (index === currentStep) {
+        node = el("span", { "aria-current": "step" });
+      } else if (index <= furthestStep) {
+        node = el("button", { type: "button", className: "steps__link" });
+        node.addEventListener("click", function () { goToStep(index, true); });
+      } else {
+        node = el("span");
+      }
+      node.appendChild(el("span", { className: "steps__num", text: (index + 1) + "." }));
+      node.appendChild(el("span", { className: "steps__label", text: step.title })); // hidden on small screens
+      item.appendChild(node);
+      list.appendChild(item);
+    });
+  }
+
+  function goToStep(index, focus) {
+    currentStep = index;
+    furthestStep = Math.max(furthestStep, index);
+    STEPS.forEach(function (step, i) { $("form-step-" + i).hidden = i !== index; });
+    if (index === REVIEW_STEP) renderReview();
+    $("step-back").hidden = index === 0;
+    $("step-next").hidden = index === REVIEW_STEP;
+    $("form-submit").hidden = index !== REVIEW_STEP;
+    document.title = "Krok " + (index + 1) + " z " + STEPS.length + ": " + STEPS[index].title + " – " + BASE_TITLE;
+    renderProgress();
+    if (focus) $("form-step-" + index + "-title").focus();
+  }
+
+  function revealField(name) {
+    var step = stepOf(name);
+    if (step !== currentStep) goToStep(step, false);
+  }
+
+  // Validator errors plus the hours picker's own, more specific message.
+  function formErrors() {
+    var result = window.AedValidator.validate(collectValues());
+    var pickerError = hoursPicker && hoursPicker.validate();
+    if (pickerError) result.errors.opening_hours = pickerError;
+    return result;
+  }
+
+  function stepErrors(index) {
+    var errors = formErrors().errors;
+    var own = {};
+    Object.keys(errors).forEach(function (name) { if (stepOf(name) === index) own[name] = errors[name]; });
+    return own;
+  }
+
+  function reviewValue(name, value) {
+    if (name === "opening_hours") return window.AedHours ? window.AedHours.describe(value) : value;
+    return formatValue(name, value);
+  }
+
+  function renderReview() {
+    var box = $("form-review");
+    box.textContent = "";
+    var cleaned = window.AedValidator.validate(collectValues()).cleaned;
+    STEPS.forEach(function (step, index) {
+      if (step.review) return;
+      var section = el("div", { className: "review-section" });
+      var head = el("div", { className: "review-section__head" });
+      head.appendChild(el("h4", { text: step.title }));
+      var change = el("button", { type: "button", className: "btn btn--small btn--secondary", text: "Zmień",
+        "aria-label": "Zmień: " + step.title });
+      change.addEventListener("click", function () { goToStep(index, true); });
+      head.appendChild(change);
+      section.appendChild(head);
+      var list = el("dl");
+      if (index === 0 && institutionProfile) {
+        list.appendChild(el("dt", { text: "Dysponent (z profilu instytucji)" }));
+        list.appendChild(el("dd", { text: institutionProfile.title || "" }));
+      }
+      FORM_FIELDS.forEach(function (field) {
+        if (step.groups.indexOf(field["x-group"]) === -1) return;
+        var text = reviewValue(field.name, cleaned[field.name]);
+        if (!text) return;
+        list.appendChild(el("dt", { text: field.title + (field["x-internal"] ? " (widoczne tylko dla administratora)" : "") }));
+        list.appendChild(el("dd", { text: text }));
+      });
+      if (!list.children.length) list.appendChild(el("dd", { className: "hint", text: "Nic nie wypełniono." }));
+      section.appendChild(list);
+      box.appendChild(section);
     });
   }
 
@@ -525,7 +645,8 @@
     var values = {};
     FORM_FIELDS.forEach(function (field) {
       var control = reportForm.elements[field.name];
-      values[field.name] = control ? control.value : "";
+      if (field.name === "opening_hours" && hoursPicker) values[field.name] = hoursPicker.value();
+      else values[field.name] = control ? control.value : "";
     });
     return values;
   }
@@ -543,7 +664,7 @@
       if (field.type === "boolean") setRadioInvalid(field.name, !!errors[field.name]);
     });
     setFieldError("organization", errors.organization || null);
-    showErrorSummary("form-error-summary", errors, LABELS);
+    showErrorSummary("form-error-summary", errors, LABELS, revealField);
   }
 
   function errorsFromApi(body) {
@@ -583,6 +704,7 @@
 
   // Read-only institution profile in the form sections (operator, public contact).
   function showInstitution(institution, count) {
+    institutionProfile = institution;
     Array.prototype.forEach.call(document.querySelectorAll(".institution-info"), function (box) {
       box.textContent = "";
       var group = box.getAttribute("data-group");
@@ -625,16 +747,32 @@
   buildForm();
   applyDefaults();
   setupConditionalFields();
+  goToStep(0, false);
+
+  $("step-back").addEventListener("click", function () { goToStep(currentStep - 1, true); });
+  $("step-next").addEventListener("click", nextStep);
+
+  function nextStep() {
+    hideStatus();
+    var errors = stepErrors(currentStep);
+    showFieldErrors(errors);
+    if (Object.keys(errors).length) return;
+    goToStep(currentStep + 1, true);
+  }
   var auth = initAuth({ onLogin: function () { loadInstitution(); loadReports(); } });
   window.AedClient.reloadReports = loadReports;
   window.AedClient.auth = auth;
 
   reportForm.addEventListener("submit", function (event) {
     event.preventDefault();
+    if (currentStep !== REVIEW_STEP) { nextStep(); return; } // Enter in a field: go to the next step
     hideStatus();
-    var result = window.AedValidator.validate(collectValues());
-    showFieldErrors(result.errors);
-    if (Object.keys(result.errors).length) return;
+    var result = formErrors();
+    if (Object.keys(result.errors).length) {
+      goToStep(Math.min.apply(null, Object.keys(result.errors).map(stepOf)), false);
+      showFieldErrors(result.errors);
+      return;
+    }
 
     // Send typed JSON values (numbers, booleans) and skip empty optional fields.
     var attributes = {};
@@ -642,7 +780,7 @@
       if (result.cleaned[name] !== null) attributes[name] = result.cleaned[name];
     });
 
-    var button = reportForm.querySelector("button[type=submit]");
+    var button = $("form-submit");
     button.disabled = true;
     api("POST", "/aed-reports", { data: { type: "aed_report", attributes: attributes } })
       .then(function (res) {
@@ -650,11 +788,15 @@
         if (res.ok) {
           reportForm.reset();
           applyDefaults();
+          furthestStep = 0;
+          goToStep(0, false);
           showStatus("Dziękujemy! Zgłoszenie zostało przesłane do weryfikacji.", "success");
           $("global-status").scrollIntoView();
           loadReports();
         } else if (res.status === 422) {
-          showFieldErrors(errorsFromApi(res.body));
+          var apiErrors = errorsFromApi(res.body);
+          goToStep(Math.min.apply(null, Object.keys(apiErrors).map(stepOf).concat([REVIEW_STEP])), false);
+          showFieldErrors(apiErrors);
         } else {
           showStatus("Nie udało się wysłać zgłoszenia (błąd " + res.status + "). Spróbuj ponownie.", "error");
         }

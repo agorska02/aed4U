@@ -133,6 +133,9 @@ class FrontendJsTest(unittest.TestCase):
     def test_opening_hours_description(self):
         self.assertEqual(self.result["described"], [c[1] for c in self.hours_cases["describe"]])
 
+    def test_opening_hours_always_open(self):
+        self.assertEqual(self.result["always"], [c[1] for c in self.hours_cases["always"]])
+
     def test_csv_export_matches_python(self):
         self.assertEqual(self.result["exported"], to_csv([export_record(r) for r in stored_examples()]))
 

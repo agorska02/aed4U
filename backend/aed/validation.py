@@ -25,12 +25,15 @@ EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
 # Subset of the OpenStreetMap opening_hours syntax: "24/7" or rules like "Mo-Fr 08:00-16:00; Sa 09:00-13:00",
-# "Mo-Su 00:00-24:00", "PH off". Enough for AED availability; the full grammar is not needed here.
+# "Mo-Su 00:00-24:00", "PH off" (public holidays), "May-Sep 08:00-20:00" (season). Enough for AED availability;
+# the full grammar is not needed here.
+_MONTH = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
+_MONTHS = rf"{_MONTH}(?:-{_MONTH})?(?:,{_MONTH}(?:-{_MONTH})?)*"
 _DAY = r"(?:Mo|Tu|We|Th|Fr|Sa|Su|PH)"
 _DAYS = rf"{_DAY}(?:-{_DAY})?(?:,{_DAY}(?:-{_DAY})?)*"
 _TIME = r"(?:[01][0-9]|2[0-4]):[0-5][0-9]"
 _SPANS = rf"{_TIME}-{_TIME}(?:,{_TIME}-{_TIME})*"
-_RULE = rf"(?:{_DAYS} )?(?:{_SPANS}|off|closed)"
+_RULE = rf"(?:{_MONTHS} )?(?:{_DAYS} )?(?:{_SPANS}|off|closed)"
 OPENING_HOURS_RE = re.compile(rf"^(?:24/7|{_RULE}(?:; ?{_RULE})*)$")
 
 MESSAGES = {
@@ -49,7 +52,7 @@ MESSAGES = {
     "email": "Podaj poprawny adres e-mail.",
     "uuid": "Podaj identyfikator UUID.",
     "decimals": "Podaj najwyżej {0} miejsc po przecinku.",
-    "opening_hours": "Użyj składni OpenStreetMap, np. 24/7 albo Mo-Fr 08:00-16:00; Sa 09:00-13:00.",
+    "opening_hours": "Użyj składni OpenStreetMap, np. 24/7, Mo-Fr 08:00-16:00; Sa 09:00-13:00; PH off albo May-Sep 08:00-20:00.",
     "unknown": "Nieznane pole – sprawdź nazwę kolumny w schemacie.",
     "only_if": "Wypełnij tylko, gdy wybrano „{0}”.",
 }
