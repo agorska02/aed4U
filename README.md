@@ -12,7 +12,8 @@ dane.gov.pl dane o defibrylatorach AED od wszystkich dysponentów w **jednym, je
   „Zgłoś dostępność urządzenia AED”, formularz jest generowany ze schematu; dysponent (nazwa, REGON) i kontakt
   publiczny pochodzą zawsze z profilu instytucji w portalu, a telefon do osoby odpowiedzialnej za AED widzi
   tylko administrator;
-- dysponenci z własnym rejestrem **importują plik** CSV/JSON/GeoJSON – z podglądem błędów; urządzenie
+- dysponenci z własnym rejestrem **importują plik** XLSX (Excel; szablon z listami wyboru), CSV, JSON lub
+  GeoJSON – z podglądem błędów; urządzenie
   identyfikuje **producent (słownik) + numer seryjny**: to samo urządzenie tej instytucji jest **aktualizowane**,
   a zgłoszone już przez inną instytucję – **odrzucane** (jedno urządzenie nie może być w dwóch miejscach);
   urządzenia blisko siebie (15 m) są oznaczane jako **możliwe duplikaty**;
@@ -49,7 +50,7 @@ Konta demo: `dostawca@demo.local` / `Demo123!` (instytucja A), `dostawca2@demo.l
 2. W sekcji **Import** pobierz „plik do pokazu z błędami” i sprawdź go – raport wskazuje wiersz, kolumnę
    i błąd (m.in. brak nazwy „innego producenta” i urządzenie, które ma już instytucja B), nic nie jest
    zapisywane. Potem sprawdź „poprawny” plik: 1 aktualizacja (ten sam producent i numer seryjny co urządzenie
-   instytucji A – dłuższe godziny), 2 nowe urządzenia, w tym 1 możliwy duplikat (inne urządzenie w tym samym
+   instytucji A – dłuższe godziny; to samo daje wersja XLSX), 2 nowe urządzenia, w tym 1 możliwy duplikat (inne urządzenie w tym samym
    miejscu co urządzenie instytucji B) → **Importuj**.
 3. Przejdź do **Weryfikacja (admin)** (`admin.html`), zaloguj się jako **admin**: filtr „Tylko możliwe
    duplikaty”, zatwierdź lub odrzuć z komentarzem; na dole pobierz zbiór CSV/JSON/GeoJSON.
@@ -96,7 +97,7 @@ w `backend/aed/admin.py`. API wymaga roli `editor` lub `admin` (`login_required`
 | `backend/aed/` | Aplikacja Django `mcod.aed` w konwencjach portalu (wzór: `mcod/suggestions`): model `AedReport` (kolumny ze schematu, źródło, możliwy duplikat, obieg weryfikacji), migracja, `rules.py`, admin (sekcje ze schematu, filtr duplikatów), deserializer/serializer generowane ze schematu, widoki Falcon `GET`/`POST /aed-reports`, `POST /aed-report-imports`, `GET /aed-devices`; w czystym Pythonie (bez Django): **`validation.py`** – walidator schematu, **`importing.py`** – parsowanie plików, plan importu, duplikaty, eksport; testy. |
 | `frontend/` | Podstrona (HTML + CSS + JS, bez zależności): `index.html` – dostawca (formularz generowany ze schematu, zgłoszenia instytucji ze statusem i szczegółami); `admin.html` – weryfikacja (w trybach demo); `aed-validator.js` / `aed-import.js` – te same reguły co `validation.py` / `importing.py`; `provider-import.js` – import pliku; `location-picker.js` – wybór punktu na mapie; `mapa.html` + `map.js` – widok publiczny (mapa i lista); `aed-hours.js` – „dostępne teraz” z `opening_hours`; `demo/` – pliki do pokazu importu; `aed-schema.js` – schemat dla przeglądarki (generowany); `config.js` – wybór trybu; `api-mock.js` – atrapa API. |
 | `tests/` | Testy walidatorów i importu – wspólne przypadki `validation_cases.json` i `import_cases.json` uruchamiane dla Pythona i JS (JS w headless Chrome/Edge), godzin dostępności (`opening_hours_cases.json`) oraz spójności plików schematu i eksportu. |
-| `tools/` | `build_frontend_schema.py` – generuje `frontend/aed-schema.js` po zmianie schematu. |
+| `tools/` | `build_frontend_schema.py` – generuje `frontend/aed-schema.js` po zmianie schematu; `build_xlsx_files.py` (+ `xlsx_writer.py`, bez zależności) – generuje szablon `schema/aed-template.xlsx` (listy wyboru, arkusze „Instrukcja” i „Słowniki”) i plik demo `frontend/demo/aed-import-demo.xlsx`. |
 | `standalone/` | Serwer demo: biblioteka standardowa Pythona + SQLite albo PostgreSQL (`db.py`, `schema.sql` / `schema.postgres.sql`, `docker-compose.yml`), to samo API co moduł portalu; testy na obu bazach. Szczegóły: [standalone/README.md](standalone/README.md). |
 | `integration/` | Podłączenie do portalu: `portal.patch` (`INSTALLED_APPS`, trasy API, pozycja w menu panelu), `docker-compose.hackathon.yml` (wolumeny + serwer podstrony), `config.portal.js` (tryb portal). Szczegóły: [integration/README.md](integration/README.md). |
 
@@ -177,6 +178,7 @@ Testy prototypu (bez portalu, Python 3.8+):
 python -m unittest discover -s tests        # walidatory Python + JS (JS: headless Chrome/Edge), pliki schematu
 python -m unittest discover -s standalone   # API serwera demo
 python tools/build_frontend_schema.py       # po każdej zmianie schema/aed.schema.json lub aed-example.csv
+python tools/build_xlsx_files.py           # po zmianie schematu lub frontend/demo/aed-import-demo.csv
 ```
 
 ## Uproszczenia prototypu (TODO przed integracją z produkcją)

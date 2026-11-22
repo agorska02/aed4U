@@ -1,4 +1,4 @@
-// Provider page: import many AED records from a CSV / JSON / GeoJSON file.
+// Provider page: import many AED records from a CSV / XLSX / JSON / GeoJSON file (XLSX is sent in base64).
 // Flow: choose a file -> dry run (POST /aed-report-imports, dry_run: true) -> report -> confirm -> import.
 (function () {
   "use strict";
@@ -27,15 +27,26 @@
     if (/\.geojson$/.test(name)) return "geojson";
     if (/\.json$/.test(name)) return "json";
     if (/\.csv$/.test(name) || /\.txt$/.test(name)) return "csv";
+    if (/\.xlsx$/.test(name)) return "xlsx";
     return null;
   }
 
-  function readFile(file) {
+  function base64(buffer) {
+    var bytes = new Uint8Array(buffer);
+    var chunks = [];
+    for (var i = 0; i < bytes.length; i += 0x8000) {
+      chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)));
+    }
+    return btoa(chunks.join(""));
+  }
+
+  // Text files as UTF-8 text; XLSX workbooks (zip) as base64.
+  function readFile(file, format) {
     return new Promise(function (resolve, reject) {
       var reader = new FileReader();
-      reader.onload = function () { resolve(reader.result); };
+      reader.onload = function () { resolve(format === "xlsx" ? base64(reader.result) : reader.result); };
       reader.onerror = function () { reject(reader.error); };
-      reader.readAsText(file, "utf-8");
+      if (format === "xlsx") reader.readAsArrayBuffer(file); else reader.readAsText(file, "utf-8");
     });
   }
 
@@ -156,13 +167,15 @@
     }
     var format = formatOf(file.name);
     if (!format) {
-      client.setFieldError("import-file", "Nieobsługiwany typ pliku. Wybierz plik .csv, .json lub .geojson.");
+      client.setFieldError("import-file", /\.xls$/i.test(file.name)
+        ? "To plik w starym formacie Excela (.xls). Zapisz go jako .xlsx albo .csv (UTF-8)."
+        : "Nieobsługiwany typ pliku. Wybierz plik .csv, .xlsx, .json lub .geojson.");
       $("import-file").focus();
       return;
     }
     var button = form.querySelector("button[type=submit]");
     button.disabled = true;
-    readFile(file)
+    readFile(file, format)
       .then(function (content) {
         pending = { format: format, content: content };
         return send(true);

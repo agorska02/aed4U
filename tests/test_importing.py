@@ -44,6 +44,7 @@ def run_case(case):
     plan = plan_import(rows, case.get("own", []), case.get("all", case.get("own", [])), INSTITUTION)
     return {
         "file_error": False,
+        "rows": [[number, record] for number, record in rows],
         "errors": [[e["row"], e["field"]] for e in plan["errors"]],
         "summary": plan["summary"],
         "actions": [[a["row"], a["action"], a["duplicate_of"], a["duplicate_of_row"]] for a in plan["actions"]],
@@ -60,6 +61,9 @@ def check_case(test, case, result):
         test.assertEqual(result["summary"][key], value, (key, result["summary"]))
     if "actions" in expect:
         test.assertEqual(result["actions"], expect["actions"])
+    parsed = {number: record for number, record in result["rows"]}
+    for number, field, value in expect.get("values", []):
+        test.assertEqual(parsed[number][field], value, (number, field))
 
 
 class SharedImportCasesTest(unittest.TestCase):

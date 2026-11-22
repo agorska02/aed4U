@@ -5,14 +5,22 @@ mirrored in frontend/aed-import.js for the in-browser mock (tests/import_cases.j
 
 Import flow: parse_file() -> plan_import() -> the caller applies the planned actions in one transaction.
 A file with any invalid row is rejected as a whole, so a provider never ends up with half an import.
+
+XLSX files arrive base64-encoded. They are read with the standard library: unzip (xlsx_parts) and then
+read_xlsx(parts) — the second step is mirrored in frontend/aed-import.js (the browser unzips on its own).
 """
 
+import base64
+import binascii
 import csv
+import datetime
 import io
 import json
 import math
 import re
 import unicodedata
+import zipfile
+import xml.etree.ElementTree as ElementTree
 
 from .validation import (
     field_names,
@@ -24,19 +32,23 @@ from .validation import (
 )
 
 MAX_ROWS = 5000
-MAX_CONTENT_LENGTH = 2_000_000  # characters
+MAX_CONTENT_LENGTH = 2_000_000  # characters (XLSX: of the base64 text)
+MAX_XLSX_PART_SIZE = 30_000_000  # bytes after unzipping one part (protects against zip bombs)
 DUPLICATE_RADIUS_M = 15
 NAME_SIMILARITY_THRESHOLD = 0.5
-FORMATS = ("csv", "json", "geojson")
+FORMATS = ("csv", "xlsx", "json", "geojson")
 
 MESSAGES = {
-    "format": "Nieobsługiwany format pliku. Dozwolone: CSV, JSON, GeoJSON.",
+    "format": "Nieobsługiwany format pliku. Dozwolone: CSV, XLSX, JSON, GeoJSON.",
     "too_large": "Plik jest za duży (maks. 2 MB).",
     "too_many_rows": "Plik ma za dużo rekordów (maks. {0}).",
     "empty": "Plik nie zawiera żadnych rekordów.",
     "csv_header": "Brak wiersza nagłówka z nazwami kolumn.",
     "csv_duplicate_column": "Kolumna „{0}” występuje w nagłówku więcej niż raz.",
     "csv_row_length": "Wiersz ma więcej wartości niż kolumn w nagłówku.",
+    "xls_old": "To plik w starym formacie Excela (.xls). Zapisz go jako .xlsx albo .csv (UTF-8).",
+    "xlsx_invalid": "Nie udało się odczytać pliku XLSX – sprawdź, czy to skoroszyt Excela (.xlsx).",
+    "xlsx_unnamed_column": "Kolumna {0} ma wartości, ale nie ma nazwy w pierwszym wierszu.",
     "unknown_columns": "Nieznane kolumny: {0}. Użyj nazw z szablonu (aed-template.csv).",
     "missing_columns": "Brak wymaganych kolumn: {0}.",
     "json_invalid": "Nieprawidłowy JSON: {0}.",
@@ -65,7 +77,8 @@ class ImportFileError(ValueError):
 def parse_file(content, file_format):
     """Return a list of (row_number, record) where record maps column names to raw values.
 
-    CSV row numbers are line numbers in the file (header = 1); JSON/GeoJSON numbers count records from 1.
+    CSV row numbers are line numbers in the file (header = 1), XLSX ones are sheet row numbers; JSON/GeoJSON
+    numbers count records from 1. XLSX content is the file encoded in base64.
     Raises ImportFileError for problems with the whole file.
     """
     if file_format not in FORMATS:
@@ -75,7 +88,12 @@ def parse_file(content, file_format):
     if len(content) > MAX_CONTENT_LENGTH:
         raise ImportFileError(_message("too_large"))
     content = content.lstrip("﻿")
-    rows = _parse_csv(content) if file_format == "csv" else _parse_json(content)
+    if file_format == "xlsx":
+        rows = read_xlsx(xlsx_parts(_decode_base64(content)))
+    elif file_format == "csv":
+        rows = _parse_csv(content)
+    else:
+        rows = _parse_json(content)
     if not rows:
         raise ImportFileError(_message("empty"))
     if len(rows) > MAX_ROWS:
@@ -131,6 +149,210 @@ def _parse_json(content):
         if isinstance(record.get("attributes"), dict):
             record = dict(record["attributes"], id=record.get("id"))
         rows.append((number, record))
+    return rows
+
+
+# --- XLSX ---------------------------------------------------------------------------------------------------
+
+XLSX_PARTS = ("xl/workbook.xml", "xl/_rels/workbook.xml.rels", "xl/sharedStrings.xml", "xl/styles.xml")
+_DATE_FORMAT_IDS = set(range(14, 23)) | {45, 46, 47}
+_EXCEL_EPOCH = datetime.datetime(1899, 12, 30)  # serial 1 = 1900-01-01 (incl. Excel's 1900 leap-year bug)
+_EXCEL_EPOCH_1904 = datetime.datetime(1904, 1, 1)
+
+
+def _decode_base64(content):
+    try:
+        return base64.b64decode(content.strip(), validate=True)
+    except (binascii.Error, ValueError):
+        raise ImportFileError(_message("xlsx_invalid"))
+
+
+def xlsx_parts(data):
+    """Unzip the parts of an XLSX workbook needed by read_xlsx(): {part name: XML text}."""
+    if data[:4] == b"\xd0\xcf\x11\xe0":  # OLE2 container: the old binary .xls
+        raise ImportFileError(_message("xls_old"))
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(data))
+        names = set(archive.namelist())
+        wanted = [n for n in names if n in XLSX_PARTS or re.match(r"^xl/worksheets/[^/]+\.xml$", n)]
+        parts = {}
+        for name in wanted:
+            if archive.getinfo(name).file_size > MAX_XLSX_PART_SIZE:
+                raise ImportFileError(_message("too_large"))
+            parts[name] = archive.read(name).decode("utf-8")
+        return parts
+    except (zipfile.BadZipFile, KeyError, UnicodeDecodeError, RuntimeError, NotImplementedError, OSError):
+        raise ImportFileError(_message("xlsx_invalid"))
+
+
+def _local(tag):
+    return tag.rsplit("}", 1)[-1]
+
+
+def _children(node, name):
+    return [child for child in node if _local(child.tag) == name]
+
+
+def _descendants(node, name):
+    return [child for child in node.iter() if _local(child.tag) == name]
+
+
+def _attr(node, name):
+    """Attribute by local name (r:id, xml:space... come with a namespace)."""
+    for key, value in node.attrib.items():
+        if _local(key) == name:
+            return value
+    return None
+
+
+def _xml(parts, name):
+    try:
+        return ElementTree.fromstring(parts[name])
+    except (KeyError, ElementTree.ParseError):
+        raise ImportFileError(_message("xlsx_invalid"))
+
+
+def _string_item(node):
+    """Text of a shared string / inline string: plain <t> or rich-text runs <r><t>, without phonetic hints."""
+    texts = [t.text or "" for t in _children(node, "t")]
+    for run in _children(node, "r"):
+        texts.extend(t.text or "" for t in _children(run, "t"))
+    return "".join(texts)
+
+
+def _date_styles(parts):
+    """Indexes of cell styles (s="...") that show numbers as dates."""
+    if "xl/styles.xml" not in parts:
+        return set()
+    styles = _xml(parts, "xl/styles.xml")
+    custom = {}
+    for fmt in _descendants(styles, "numFmt"):
+        code = re.sub(r'"[^"]*"|\[[^\]]*\]|\\.', "", _attr(fmt, "formatCode") or "").lower()
+        custom[int(_attr(fmt, "numFmtId"))] = bool(re.search(r"[dmyh]", code)) and "general" not in code
+    result = set()
+    for cell_xfs in _descendants(styles, "cellXfs"):
+        for index, xf in enumerate(_children(cell_xfs, "xf")):
+            fmt_id = int(_attr(xf, "numFmtId") or 0)
+            if fmt_id in _DATE_FORMAT_IDS or custom.get(fmt_id):
+                result.add(index)
+    return result
+
+
+def _excel_date(serial, date1904):
+    moment = (_EXCEL_EPOCH_1904 if date1904 else _EXCEL_EPOCH) + datetime.timedelta(seconds=round(serial * 86400))
+    if moment.time() == datetime.time(0):
+        return moment.date().isoformat()
+    return moment.isoformat()
+
+
+def _excel_number(text):
+    value = float(text)
+    if value.is_integer() and abs(value) < 1e15:
+        return str(int(value))
+    return repr(value)
+
+
+def _column_index(ref):
+    """'C7' -> 2 (zero-based column)."""
+    index = 0
+    for char in re.match(r"^[A-Z]*", ref).group(0):
+        index = index * 26 + ord(char) - 64
+    return index - 1
+
+
+def _column_letter(index):
+    letters = ""
+    index += 1
+    while index:
+        index, rest = divmod(index - 1, 26)
+        letters = chr(65 + rest) + letters
+    return letters
+
+
+def _first_sheet_path(parts):
+    workbook = _xml(parts, "xl/workbook.xml")
+    sheets = _descendants(workbook, "sheet")
+    if not sheets:
+        raise ImportFileError(_message("xlsx_invalid"))
+    rel_id = _attr(sheets[0], "id")
+    rels = _xml(parts, "xl/_rels/workbook.xml.rels")
+    target = next((_attr(rel, "Target") for rel in _descendants(rels, "Relationship") if _attr(rel, "Id") == rel_id), None)
+    if not target:
+        raise ImportFileError(_message("xlsx_invalid"))
+    path = target.lstrip("/") if target.startswith("/") else "xl/" + target
+    date1904 = any(_attr(pr, "date1904") in ("1", "true") for pr in _descendants(workbook, "workbookPr"))
+    return path, date1904
+
+
+def _cell_value(cell, shared, date_styles, date1904):
+    kind = _attr(cell, "t") or "n"
+    if kind == "inlineStr":
+        inline = _children(cell, "is")
+        return _string_item(inline[0]) if inline else ""
+    values = _children(cell, "v")
+    text = values[0].text if values and values[0].text is not None else ""
+    if text == "":
+        return ""
+    if kind == "s":
+        try:
+            return shared[int(text)]
+        except (ValueError, IndexError):
+            raise ImportFileError(_message("xlsx_invalid"))
+    if kind == "b":
+        return "true" if text == "1" else "false"
+    if kind == "n":
+        try:
+            if int(_attr(cell, "s") or 0) in date_styles:
+                return _excel_date(float(text), date1904)
+            return _excel_number(text)
+        except ValueError:
+            return text
+    return text  # "str" (formula result), "e" (error such as #N/A), "d" (ISO date)
+
+
+def xlsx_table(parts):
+    """Non-empty rows of the first sheet as [(sheet row number, {column index: text})], header included.
+
+    Cell values become text as in a CSV file: numbers without needless decimals, booleans as true/false and
+    date-formatted numbers as yyyy-mm-dd. Formulas give their last calculated value.
+    """
+    sheet_path, date1904 = _first_sheet_path(parts)
+    shared = []
+    if "xl/sharedStrings.xml" in parts:
+        shared = [_string_item(si) for si in _children(_xml(parts, "xl/sharedStrings.xml"), "si")]
+    date_styles = _date_styles(parts)
+    sheet = _xml(parts, sheet_path)
+    table = []
+    for data in _descendants(sheet, "sheetData"):
+        for position, row in enumerate(_children(data, "row"), 1):
+            number = int(_attr(row, "r") or position)
+            values = {}
+            for column, cell in enumerate(_children(row, "c")):
+                ref = _attr(cell, "r")
+                index = _column_index(ref) if ref else column
+                values[index] = _cell_value(cell, shared, date_styles, date1904)
+            if any(str(v).strip() for v in values.values()):
+                table.append((number, values))
+    return table
+
+
+def read_xlsx(parts):
+    """Rows of the first sheet as [(sheet row number, record)]; the first non-empty row holds column names."""
+    table = xlsx_table(parts)
+    if not table:
+        raise ImportFileError(_message("empty"))
+    header = {index: str(name).strip() for index, name in table[0][1].items() if str(name).strip()}
+    seen = set()
+    for name in header.values():
+        if name in seen:
+            raise ImportFileError(_message("csv_duplicate_column", name))
+        seen.add(name)
+    rows = []
+    for number, values in table[1:]:
+        for index, value in values.items():
+            if index not in header and str(value).strip():
+                raise ImportFileError("Wiersz {0}: {1}".format(number, _message("xlsx_unnamed_column", _column_letter(index))))
+        rows.append((number, {name: values.get(index, "") for index, name in sorted(header.items())}))
     return rows
 
 

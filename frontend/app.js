@@ -386,9 +386,11 @@
     "latitude", "longitude", "internal_contact_phone"];
   var PLACEHOLDERS = { latitude: "np. 50.061389", longitude: "np. 19.938333", postal_code: "np. 31-004" };
 
+  // optional elements: the page may not show the admin panel link or the demo note
   var adminLink = $("admin-link");
-  if (config.adminPanelUrl) adminLink.href = config.adminPanelUrl;
-  $("demo-resubmit-note").hidden = !config.demo;
+  if (adminLink && config.adminPanelUrl) adminLink.href = config.adminPanelUrl;
+  var resubmitNote = $("demo-resubmit-note");
+  if (resubmitNote) resubmitNote.hidden = !config.demo;
 
   // x-requiredIf fields are shown (and then required) only when the other field has the given value.
   function isRequired(field) {

@@ -40,19 +40,19 @@ var validation = DATA.validation.map(function (c) {
   var r = AedValidator.validate(c.record);
   return {name: c.name, errors: Object.keys(r.errors).sort(), messages: r.errors};
 });
-var imports = DATA.imports.map(function (c) {
-  var rows;
-  try { rows = AedImport.parseFile(c.content, c.format); }
-  catch (e) { if (e instanceof AedImport.ImportFileError) return {file_error: true}; throw e; }
-  var own = c.own || [], all = c.all || own;
-  var plan = AedImport.planImport(rows, own, all, {operator_name: "Instytucja testowa"});
-  return {
-    file_error: false,
-    errors: plan.errors.map(function (e) { return [e.row, e.field]; }),
-    summary: plan.summary,
-    actions: plan.actions.map(function (a) { return [a.row, a.action, a.duplicate_of, a.duplicate_of_row]; })
-  };
-});
+var imports = Promise.all(DATA.imports.map(function (c) {
+  return AedImport.parseFileAsync(c.content, c.format).then(function (rows) {
+    var own = c.own || [], all = c.all || own;
+    var plan = AedImport.planImport(rows, own, all, {operator_name: "Instytucja testowa"});
+    return {
+      file_error: false,
+      rows: rows,
+      errors: plan.errors.map(function (e) { return [e.row, e.field]; }),
+      summary: plan.summary,
+      actions: plan.actions.map(function (a) { return [a.row, a.action, a.duplicate_of, a.duplicate_of_row]; })
+    };
+  }, function (e) { if (e instanceof AedImport.ImportFileError) return {file_error: true}; throw e; });
+}));
 var exported = AedImport.toCsv(AED_EXAMPLES.map(function (row) {
   var r = AedValidator.validate(row, {provider: false}).cleaned;
   r.uuid = row.id; r.source = row.source; r.verified_at = row.verified_at;
@@ -60,14 +60,17 @@ var exported = AedImport.toCsv(AED_EXAMPLES.map(function (row) {
 }));
 var hours = DATA.hours.status.map(function (c) { return AedHours.statusAt(c[0], new Date(c[1])); });
 var described = DATA.hours.describe.map(function (c) { return AedHours.describe(c[0]); });
-RESULT = {validation: validation, imports: imports, exported: exported, hours: hours, described: described};
+RESULT = imports.then(function (imported) {  // XLSX files are read asynchronously
+  return {validation: validation, imports: imported, exported: exported, hours: hours, described: described};
+});
 """
 
 PAGE = """<!doctype html><meta charset="utf-8"><body><pre id="out"></pre>{scripts}
 <script>
 var DATA = {data}, RESULT = null;
-try {{ {runner} }} catch (e) {{ RESULT = {{error: String(e && e.stack || e)}}; }}
-document.getElementById("out").textContent = "RESULT" + JSON.stringify(RESULT) + "END";
+function show(value) {{ document.getElementById("out").textContent = "RESULT" + JSON.stringify(value) + "END"; }}
+function fail(e) {{ show({{error: String(e && e.stack || e)}}); }}
+try {{ {runner} Promise.resolve(RESULT).then(show, fail); }} catch (e) {{ fail(e); }}
 </script>"""
 
 
@@ -87,7 +90,16 @@ class FrontendJsTest(unittest.TestCase):
             page_path = Path(tmp) / "frontend.html"
             page_path.write_text(page, encoding="utf-8")
             out = subprocess.run(
-                [BROWSER, "--headless", "--disable-gpu", f"--user-data-dir={tmp}", "--dump-dom", page_path.as_uri()],
+                # the virtual time budget lets the asynchronous XLSX reading finish before the DOM is dumped
+                [
+                    BROWSER,
+                    "--headless",
+                    "--disable-gpu",
+                    f"--user-data-dir={tmp}",
+                    "--virtual-time-budget=20000",
+                    "--dump-dom",
+                    page_path.as_uri(),
+                ],
                 capture_output=True,
                 timeout=90,
             ).stdout.decode("utf-8", "replace")

@@ -12,6 +12,7 @@ rozproszonych źródeł można połączyć w **jeden ogólnopolski zbiór**.
 |---|---|
 | `aed.schema.json` | Schemat w formacie [Frictionless Table Schema](https://specs.frictionlessdata.io/table-schema/): nazwy, typy, wymagalność, wzorce, zakresy, słowniki, polskie opisy |
 | `aed-template.csv` | Pusty szablon dla dysponenta (bez kolumn nadawanych przez system) |
+| `aed-template.xlsx` | Ten sam szablon dla Excela: arkusz „Dane” z listami wyboru dla pól słownikowych i formatem dat, „Instrukcja” (opis pól) i „Słowniki” (kody i znaczenie); importowany jest tylko pierwszy arkusz. Generowany: `python tools/build_xlsx_files.py` |
 | `aed-example.csv` | 5 rekordów przykładowych – **dane fikcyjne**, oznaczone `[PRZYKŁAD]` |
 | `dictionaries/*.csv` | Słowniki wartości: `access`, `device_status`, `pediatric`, `building_types`, `manufacturers`, `street_types`, `voivodeships` |
 

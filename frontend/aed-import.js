@@ -1,22 +1,28 @@
 // Import from many sources, duplicate detection and export — the same rules as backend/aed/importing.py
 // (tests/import_cases.json runs against both). Used by the in-browser mock (api-mock.js).
+// XLSX files are base64-encoded; they are unzipped with the browser's DecompressionStream, so XLSX
+// parsing is asynchronous: use parseFileAsync() (parseFile() handles CSV, JSON and GeoJSON).
 (function () {
   "use strict";
 
   var MAX_ROWS = 5000;
-  var MAX_CONTENT_LENGTH = 2000000;
+  var MAX_CONTENT_LENGTH = 2000000; // characters (XLSX: of the base64 text)
+  var MAX_XLSX_PART_SIZE = 30000000; // bytes after unzipping one part (protects against zip bombs)
   var DUPLICATE_RADIUS_M = 15;
   var NAME_SIMILARITY_THRESHOLD = 0.5;
-  var FORMATS = ["csv", "json", "geojson"];
+  var FORMATS = ["csv", "xlsx", "json", "geojson"];
 
   var MESSAGES = {
-    format: "Nieobsługiwany format pliku. Dozwolone: CSV, JSON, GeoJSON.",
+    format: "Nieobsługiwany format pliku. Dozwolone: CSV, XLSX, JSON, GeoJSON.",
     too_large: "Plik jest za duży (maks. 2 MB).",
     too_many_rows: "Plik ma za dużo rekordów (maks. {0}).",
     empty: "Plik nie zawiera żadnych rekordów.",
     csv_header: "Brak wiersza nagłówka z nazwami kolumn.",
     csv_duplicate_column: "Kolumna „{0}” występuje w nagłówku więcej niż raz.",
     csv_row_length: "Wiersz ma więcej wartości niż kolumn w nagłówku.",
+    xls_old: "To plik w starym formacie Excela (.xls). Zapisz go jako .xlsx albo .csv (UTF-8).",
+    xlsx_invalid: "Nie udało się odczytać pliku XLSX – sprawdź, czy to skoroszyt Excela (.xlsx).",
+    xlsx_unnamed_column: "Kolumna {0} ma wartości, ale nie ma nazwy w pierwszym wierszu.",
     unknown_columns: "Nieznane kolumny: {0}. Użyj nazw z szablonu (aed-template.csv).",
     missing_columns: "Brak wymaganych kolumn: {0}.",
     json_invalid: "Nieprawidłowy JSON: {0}.",
@@ -159,12 +165,272 @@
     if (missing.length) throw new ImportFileError(msg("missing_columns", missing.join(", ")));
   }
 
-  // Returns [[rowNumber, record], ...]; throws ImportFileError.
-  function parseFile(content, format) {
+
+  // --- XLSX (same steps as importing.py: unzip, then read the first sheet) ---------------------------------
+
+  var XLSX_PARTS = ["xl/workbook.xml", "xl/_rels/workbook.xml.rels", "xl/sharedStrings.xml", "xl/styles.xml"];
+  var DATE_FORMAT_IDS = [14, 15, 16, 17, 18, 19, 20, 21, 22, 45, 46, 47];
+  var EXCEL_EPOCH = Date.UTC(1899, 11, 30); // serial 1 = 1900-01-01 (incl. Excel's 1900 leap-year bug)
+  var EXCEL_EPOCH_1904 = Date.UTC(1904, 0, 1);
+
+  function decodeBase64(content) {
+    try {
+      var binary = atob(content.trim());
+      var bytes = new Uint8Array(binary.length);
+      for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return bytes;
+    } catch (e) {
+      throw new ImportFileError(msg("xlsx_invalid"));
+    }
+  }
+
+  // Central directory of a zip file: [{name, method, compressedSize, size, offset}]; throws on a broken file.
+  function zipEntries(bytes) {
+    var view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    var end = -1;
+    for (var i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) {
+      if (view.getUint32(i, true) === 0x06054b50) { end = i; break; }
+    }
+    if (end === -1) throw new Error("no zip end record");
+    var count = view.getUint16(end + 10, true);
+    var offset = view.getUint32(end + 16, true);
+    var entries = [];
+    for (var n = 0; n < count; n++) {
+      if (view.getUint32(offset, true) !== 0x02014b50) throw new Error("bad zip directory");
+      var nameLength = view.getUint16(offset + 28, true);
+      entries.push({
+        name: new TextDecoder().decode(bytes.subarray(offset + 46, offset + 46 + nameLength)),
+        method: view.getUint16(offset + 10, true),
+        compressedSize: view.getUint32(offset + 20, true),
+        size: view.getUint32(offset + 24, true),
+        offset: view.getUint32(offset + 42, true)
+      });
+      offset += 46 + nameLength + view.getUint16(offset + 30, true) + view.getUint16(offset + 32, true);
+    }
+    return entries;
+  }
+
+  function unzipEntry(bytes, entry) {
+    var view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (view.getUint32(entry.offset, true) !== 0x04034b50) throw new Error("bad zip entry");
+    var start = entry.offset + 30 + view.getUint16(entry.offset + 26, true) + view.getUint16(entry.offset + 28, true);
+    var data = bytes.subarray(start, start + entry.compressedSize);
+    var decode = function (buffer) {
+      if (buffer.byteLength > MAX_XLSX_PART_SIZE) throw new ImportFileError(msg("too_large"));
+      return new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+    };
+    if (entry.method === 0) return Promise.resolve(decode(data));
+    if (entry.method !== 8 || typeof DecompressionStream === "undefined") throw new Error("unsupported compression");
+    var stream = new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+    return new Response(stream).arrayBuffer().then(function (buffer) { return decode(new Uint8Array(buffer)); });
+  }
+
+  // Unzip the parts of an XLSX workbook needed by readXlsx(): Promise of {part name: XML text}.
+  function xlsxParts(bytes) {
+    if (bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0) {
+      return Promise.reject(new ImportFileError(msg("xls_old"))); // OLE2 container: the old binary .xls
+    }
+    return Promise.resolve().then(function () {
+      var wanted = zipEntries(bytes).filter(function (e) {
+        return XLSX_PARTS.indexOf(e.name) !== -1 || /^xl\/worksheets\/[^/]+\.xml$/.test(e.name);
+      });
+      wanted.forEach(function (e) { if (e.size > MAX_XLSX_PART_SIZE) throw new ImportFileError(msg("too_large")); });
+      return Promise.all(wanted.map(function (e) {
+        return unzipEntry(bytes, e).then(function (text) { return [e.name, text]; });
+      }));
+    }).then(function (pairs) {
+      var parts = {};
+      pairs.forEach(function (p) { parts[p[0]] = p[1]; });
+      return parts;
+    }, function (e) {
+      throw e instanceof ImportFileError ? e : new ImportFileError(msg("xlsx_invalid"));
+    });
+  }
+
+  function children(node, name) {
+    return Array.prototype.filter.call(node.children, function (c) { return c.localName === name; });
+  }
+  function descendants(node, name) { return Array.prototype.slice.call(node.getElementsByTagNameNS("*", name)); }
+  function attr(node, name) { // by local name (r:id, xml:space... come with a namespace)
+    for (var i = 0; i < node.attributes.length; i++) {
+      if (node.attributes[i].localName === name) return node.attributes[i].value;
+    }
+    return null;
+  }
+
+  function xml(parts, name) {
+    if (!(name in parts)) throw new ImportFileError(msg("xlsx_invalid"));
+    var doc = new DOMParser().parseFromString(parts[name], "application/xml");
+    if (doc.getElementsByTagName("parsererror").length) throw new ImportFileError(msg("xlsx_invalid"));
+    return doc.documentElement;
+  }
+
+  // Text of a shared / inline string: plain <t> or rich-text runs <r><t>, without phonetic hints.
+  function stringItem(node) {
+    var texts = children(node, "t").map(function (t) { return t.textContent; });
+    children(node, "r").forEach(function (run) {
+      children(run, "t").forEach(function (t) { texts.push(t.textContent); });
+    });
+    return texts.join("");
+  }
+
+  // Indexes of cell styles (s="...") that show numbers as dates.
+  function dateStyles(parts) {
+    if (!("xl/styles.xml" in parts)) return [];
+    var styles = xml(parts, "xl/styles.xml");
+    var custom = {};
+    descendants(styles, "numFmt").forEach(function (fmt) {
+      var code = (attr(fmt, "formatCode") || "").replace(/"[^"]*"|\[[^\]]*\]|\\./g, "").toLowerCase();
+      custom[Number(attr(fmt, "numFmtId"))] = /[dmyh]/.test(code) && code.indexOf("general") === -1;
+    });
+    var result = [];
+    descendants(styles, "cellXfs").forEach(function (cellXfs) {
+      children(cellXfs, "xf").forEach(function (xf, index) {
+        var id = Number(attr(xf, "numFmtId") || 0);
+        if (DATE_FORMAT_IDS.indexOf(id) !== -1 || custom[id]) result.push(index);
+      });
+    });
+    return result;
+  }
+
+  function excelDate(serial, date1904) {
+    var iso = new Date((date1904 ? EXCEL_EPOCH_1904 : EXCEL_EPOCH) + Math.round(serial * 86400) * 1000).toISOString();
+    return iso.slice(11, 19) === "00:00:00" ? iso.slice(0, 10) : iso.slice(0, 19);
+  }
+
+  function excelNumber(text) {
+    var value = Number(text);
+    if (text.trim() === "" || isNaN(value)) throw new Error("not a number");
+    return String(value); // shortest round-trip form, like repr() in Python (integers without ".0")
+  }
+
+  function columnIndex(ref) { // "C7" -> 2
+    var letters = /^[A-Z]*/.exec(ref)[0];
+    var index = 0;
+    for (var i = 0; i < letters.length; i++) index = index * 26 + letters.charCodeAt(i) - 64;
+    return index - 1;
+  }
+
+  function columnLetter(index) {
+    var letters = "";
+    index += 1;
+    while (index) {
+      var rest = (index - 1) % 26;
+      letters = String.fromCharCode(65 + rest) + letters;
+      index = Math.floor((index - 1) / 26);
+    }
+    return letters;
+  }
+
+  function firstSheetPath(parts) {
+    var workbook = xml(parts, "xl/workbook.xml");
+    var sheets = descendants(workbook, "sheet");
+    if (!sheets.length) throw new ImportFileError(msg("xlsx_invalid"));
+    var relId = attr(sheets[0], "id");
+    var target = null;
+    descendants(xml(parts, "xl/_rels/workbook.xml.rels"), "Relationship").forEach(function (rel) {
+      if (target === null && attr(rel, "Id") === relId) target = attr(rel, "Target");
+    });
+    if (!target) throw new ImportFileError(msg("xlsx_invalid"));
+    var date1904 = descendants(workbook, "workbookPr").some(function (pr) {
+      return ["1", "true"].indexOf(attr(pr, "date1904")) !== -1;
+    });
+    return { path: target.charAt(0) === "/" ? target.replace(/^\/+/, "") : "xl/" + target, date1904: date1904 };
+  }
+
+  function cellValue(cell, shared, styles, date1904) {
+    var kind = attr(cell, "t") || "n";
+    if (kind === "inlineStr") {
+      var inline = children(cell, "is");
+      return inline.length ? stringItem(inline[0]) : "";
+    }
+    var values = children(cell, "v");
+    var text = values.length ? values[0].textContent : "";
+    if (text === "") return "";
+    if (kind === "s") {
+      var index = Number(text);
+      if (!Number.isInteger(index) || index < 0 || index >= shared.length) throw new ImportFileError(msg("xlsx_invalid"));
+      return shared[index];
+    }
+    if (kind === "b") return text === "1" ? "true" : "false";
+    if (kind === "n") {
+      try {
+        if (styles.indexOf(Number(attr(cell, "s") || 0)) !== -1) return excelDate(Number(text), date1904);
+        return excelNumber(text);
+      } catch (e) {
+        return text;
+      }
+    }
+    return text; // "str" (formula result), "e" (error such as #N/A), "d" (ISO date)
+  }
+
+  // Rows of the first sheet as [[sheet row number, record]]; the first non-empty row holds column names.
+  function readXlsx(parts) {
+    var sheetInfo = firstSheetPath(parts);
+    var shared = "xl/sharedStrings.xml" in parts
+      ? children(xml(parts, "xl/sharedStrings.xml"), "si").map(stringItem) : [];
+    var styles = dateStyles(parts);
+    var sheet = xml(parts, sheetInfo.path);
+    var table = [];
+    descendants(sheet, "sheetData").forEach(function (data) {
+      children(data, "row").forEach(function (row, position) {
+        var number = Number(attr(row, "r") || position + 1);
+        var values = {};
+        children(row, "c").forEach(function (cell, column) {
+          var ref = attr(cell, "r");
+          values[ref ? columnIndex(ref) : column] = cellValue(cell, shared, styles, sheetInfo.date1904);
+        });
+        var filled = Object.keys(values).some(function (k) { return String(values[k]).trim() !== ""; });
+        if (filled) table.push([number, values]);
+      });
+    });
+    if (!table.length) throw new ImportFileError(msg("empty"));
+    var header = {};
+    var seen = {};
+    Object.keys(table[0][1]).forEach(function (index) {
+      var name = String(table[0][1][index]).trim();
+      if (!name) return;
+      if (seen[name]) throw new ImportFileError(msg("csv_duplicate_column", name));
+      seen[name] = true;
+      header[index] = name;
+    });
+    var order = Object.keys(header).map(Number).sort(function (a, b) { return a - b; });
+    return table.slice(1).map(function (entry) {
+      var values = entry[1];
+      Object.keys(values).forEach(function (index) {
+        if (!(index in header) && String(values[index]).trim() !== "") {
+          throw new ImportFileError("Wiersz " + entry[0] + ": " + msg("xlsx_unnamed_column", columnLetter(Number(index))));
+        }
+      });
+      var record = {};
+      order.forEach(function (index) { record[header[index]] = index in values ? values[index] : ""; });
+      return [entry[0], record];
+    });
+  }
+
+  function checkContent(content, format) {
     if (FORMATS.indexOf(format) === -1 || typeof content !== "string") throw new ImportFileError(msg("format"));
     if (content.length > MAX_CONTENT_LENGTH) throw new ImportFileError(msg("too_large"));
+  }
+
+  // CSV, JSON, GeoJSON: returns [[rowNumber, record], ...]; throws ImportFileError.
+  function parseFile(content, format) {
+    checkContent(content, format);
+    if (format === "xlsx") throw new Error("XLSX is read asynchronously: use parseFileAsync()");
     content = content.replace(/^﻿/, "");
-    var rows = format === "csv" ? parseCsv(content) : parseJson(content);
+    return checkRows(format === "csv" ? parseCsv(content) : parseJson(content));
+  }
+
+  // Any format (XLSX content in base64): Promise of rows; rejects with ImportFileError.
+  function parseFileAsync(content, format) {
+    return Promise.resolve().then(function () {
+      checkContent(content, format);
+      if (format !== "xlsx") return parseFile(content, format);
+      return xlsxParts(decodeBase64(content)).then(function (parts) { return checkRows(readXlsx(parts)); });
+    });
+  }
+
+  function checkRows(rows) {
     if (!rows.length) throw new ImportFileError(msg("empty"));
     if (rows.length > MAX_ROWS) throw new ImportFileError(msg("too_many_rows", MAX_ROWS));
     var columns = {};
@@ -380,6 +646,8 @@
   window.AedImport = {
     ImportFileError: ImportFileError,
     parseFile: parseFile,
+    parseFileAsync: parseFileAsync,
+    readXlsx: readXlsx,
     planImport: planImport,
     findDuplicate: findDuplicate,
     deviceKey: deviceKey,

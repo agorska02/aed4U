@@ -118,18 +118,20 @@
       <section class="card" aria-labelledby="import-heading">
         <h2 id="import-heading">Import wielu urządzeń z pliku</h2>
         <p class="hint">
-          Masz już rejestr urządzeń? Prześlij plik zgodny z wzorcowym zakresem danych – CSV (UTF-8, separator
-          przecinek lub średnik), JSON lub GeoJSON. Urządzenie, które Twoja instytucja już zgłosiła (to samo
-          miejsce – do 15 m, podobna nazwa lub ten sam adres – i ta sama kondygnacja), zostanie zaktualizowane,
-          a nie zdublowane.
+          Masz już rejestr urządzeń? Prześlij plik zgodny z wzorcowym zakresem danych – arkusz Excela (XLSX,
+          czytany jest pierwszy arkusz), CSV (UTF-8, separator przecinek lub średnik), JSON lub GeoJSON.
+          Urządzenie, które Twoja instytucja już zgłosiła (ten sam producent i numer seryjny), zostanie
+          zaktualizowane, a nie zdublowane.
         </p>
         <ul class="download-list">
+          <li><a href="../schema/aed-template.xlsx" download>Szablon XLSX</a> – z listami wyboru dla pól słownikowych
+            i opisem pól</li>
           <li><a href="../schema/aed-template.csv" download>Szablon CSV</a> – pusty, z nagłówkami kolumn</li>
           <li><a href="../schema/aed-example.csv" download>Przykład CSV</a> – 5 rekordów fikcyjnych</li>
-          <li><a href="../schema/aed.schema.json" download>Opis pól (Table Schema, JSON)</a></li>
+          <li><a href="../schema/aed.schema.json" download>Opis pól</a></li>
           <li id="demo-import-files" hidden>
-            Pliki do pokazu: <a href="demo/aed-import-demo.csv" download>poprawny</a> (aktualizacja, nowe urządzenie,
-            możliwy duplikat) i <a href="demo/aed-import-demo-bledy.csv" download>z błędami</a>
+            Przykładowe pliki: <a href="demo/aed-import-demo.csv" download>poprawny</a>
+            (też <a href="demo/aed-import-demo.xlsx" download>jako XLSX</a>) i <a href="demo/aed-import-demo-bledy.csv" download>z błędami</a>
           </li>
         </ul>
 
@@ -137,7 +139,7 @@
           <div class="field">
             <label for="import-file">Plik z danymi <span aria-hidden="true">*</span><span class="sr-only">(wymagane)</span></label>
             <p id="import-file-hint" class="hint">Najpierw sprawdzimy plik – nic nie zostanie zapisane bez Twojego potwierdzenia.</p>
-            <input id="import-file" name="import-file" type="file" accept=".csv,.json,.geojson,text/csv,application/json,application/geo+json"
+            <input id="import-file" name="import-file" type="file" accept=".csv,.xlsx,.json,.geojson,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/json,application/geo+json"
                    aria-describedby="import-file-hint import-file-error">
             <p id="import-file-error" class="field__error" hidden></p>
           </div>
@@ -168,9 +170,7 @@
           </table>
         </div>
         <p class="hint">
-          Zgłoszenia weryfikuje administrator portalu. Odrzucone zgłoszenie poprawiasz w
-          <a id="admin-link" href="admin.html">Panelu Administratora</a> portalu i przesyłasz ponownie
-          <span id="demo-resubmit-note" hidden>(w demo: wyślij nowe zgłoszenie)</span>.
+          Zgłoszenia weryfikuje administrator portalu.
         </p>
       </section>
     </div>
@@ -178,7 +178,7 @@
 
   <footer class="site-footer">
     <div class="container">
-      <p>Prototyp podstrony w architekturze portalu otwartych danych (mcod). Dane testowe.</p>
+      <p>Prototyp podstrony w architekturze portalu otwartych danych. Dane testowe.</p>
     </div>
   </footer>
 </body>

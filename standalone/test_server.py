@@ -4,6 +4,7 @@ The same tests run on SQLite and — when AED_TEST_DATABASE_URL is set — on Po
 dropped and recreated for every test), e.g. AED_TEST_DATABASE_URL=postgresql://aed:aed@127.0.0.1:5433/aed_test
 """
 
+import base64
 import json
 import os
 import sys
@@ -314,9 +315,25 @@ class DemoServerTest(unittest.TestCase):
         self.assertEqual(body["data"]["attributes"]["status"], "rejected")
         self.assertIn("Nieznane kolumny", body["data"]["attributes"]["file_error"])
 
+    def test_xlsx_import_gives_the_same_plan_as_csv(self):
+        token = self.login(PROVIDER_A)
+        demo = Path(__file__).resolve().parents[1] / "frontend" / "demo"
+        xlsx = base64.b64encode((demo / "aed-import-demo.xlsx").read_bytes()).decode("ascii")
+        _status, body = self.import_file(token, xlsx, file_format="xlsx")
+        attrs = body["data"]["attributes"]
+        self.assertEqual(attrs["status"], "dry_run", attrs)
+        _status, body = self.import_file(token, (demo / "aed-import-demo.csv").read_text(encoding="utf-8"))
+        self.assertEqual(attrs["summary"], body["data"]["attributes"]["summary"])
+        self.assertEqual((attrs["summary"]["create"], attrs["summary"]["update"]), (2, 1))
+
+    def test_old_xls_file_is_rejected_with_a_hint(self):
+        old_xls = bytes.fromhex("d0cf11e0a1b11ae1") + bytes(64)  # OLE2 header of a binary .xls
+        _status, body = self.import_file(self.login(PROVIDER_A), base64.b64encode(old_xls).decode("ascii"), "xlsx")
+        self.assertIn(".xlsx", body["data"]["attributes"]["file_error"])
+
     def test_invalid_import_request(self):
         token = self.login(PROVIDER_A)
-        status, body = self.import_file(token, "", file_format="xlsx")
+        status, body = self.import_file(token, "", file_format="ods")
         self.assertEqual(status, 422)
         pointers = {e["source"]["pointer"].split("/")[-1] for e in body["errors"]}
         self.assertEqual(pointers, {"format", "content"})
